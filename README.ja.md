@@ -4,7 +4,7 @@
 
 **TaskBarHero**（TBH: Task Bar Hero）向けのゲーム内 **DPS / 被ダメージ** オーバーレイ。
 BepInEx 6 IL2CPP プラグインとして実装。動作確認バージョン **v1.00.09**（Unity 6 / IL2CPP）。
-UI は **English / 日本語 / 繁體中文** を自動判別します。
+UI は **English / 日本語 / 繁體中文 / 简体中文 / Español** を自動判別します。
 
 > ⬇️ **プレイヤーの方は [Releases](../../releases/latest) の zip をダウンロードするだけでOK。ビルド不要です。**
 
@@ -74,7 +74,7 @@ UI は **English / 日本語 / 繁體中文** を自動判別します。
 ファイル：`<ゲームフォルダ>\BepInEx\config\tbh.dpsmeter.cfg`（初回起動後に生成）
 ```
 [General]
-Language = Auto   # zh-Hant / en / ja に変更で言語を固定
+Language = Auto   # zh-Hant / zh-Hans / en / ja / es に変更で言語を固定
 ```
 
 ## アンインストール

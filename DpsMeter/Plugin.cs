@@ -61,7 +61,7 @@ namespace TbhDpsMeter
             DebugDamage = Config.Bind("Debug", "LogDamageSamples", false, "Log the first damage hits to verify the hook is correct.");
 
             var lang = Config.Bind("General", "Language", "Auto",
-                "UI language: Auto / zh-Hant / en / ja.");
+                "UI language: Auto / zh-Hant / zh-Hans / en / ja / es.");
             Loc.Init(lang.Value);
 
             TakenPosX = Config.Bind("TakenUI", "PosX", -1f, "Damage-taken overlay X (auto-saved when dragged). -1 = auto.");

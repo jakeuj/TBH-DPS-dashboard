@@ -4,7 +4,7 @@
 
 In-game **DPS / damage-taken** overlay for **TaskBarHero** (TBH: Task Bar Hero),
 built as a BepInEx 6 IL2CPP plugin. Tested on game **v1.00.09** (Unity 6 / IL2CPP).
-UI auto-detects **English / 日本語 / 繁體中文**.
+UI auto-detects **English / 日本語 / 繁體中文 / 简体中文 / Español**.
 
 > ⬇️ **Players: just download the zip from [Releases](../../releases/latest) — no compiling needed.**
 
@@ -75,7 +75,7 @@ Overwrite the new `TBH.DpsMeter.dll` into:
 File: `<game folder>\BepInEx\config\tbh.dpsmeter.cfg` (created after the first run)
 ```
 [General]
-Language = Auto   # set to zh-Hant / en / ja to force a language
+Language = Auto   # force a language: zh-Hant / zh-Hans / en / ja / es
 ```
 
 ## Uninstall

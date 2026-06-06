@@ -4,7 +4,7 @@
 
 **TaskBarHero**（TBH: Task Bar Hero）的遊戲內 **DPS / 承受傷害** 監控外掛，
 以 BepInEx 6 IL2CPP 外掛實作。測試版本 **v1.00.09**（Unity 6 / IL2CPP）。
-介面自動偵測 **繁體中文 / English / 日本語**。
+介面自動偵測 **繁體中文 / 简体中文 / English / 日本語 / Español**。
 
 > ⬇️ **一般玩家只要到 [Releases](../../releases/latest) 下載 zip 就能用，不用編譯。**
 
@@ -74,7 +74,7 @@
 設定檔：`<遊戲資料夾>\BepInEx\config\tbh.dpsmeter.cfg`（第一次跑完才會產生）
 ```
 [General]
-Language = Auto   # 可改成 zh-Hant / en / ja 強制語言
+Language = Auto   # 可改成 zh-Hant / zh-Hans / en / ja / es 強制語言
 ```
 
 ## 移除
