@@ -1,0 +1,194 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
+using UnityEngine;
+
+namespace TbhDpsMeter
+{
+    /// <summary>
+    /// OS-level input via Win32. This game's Unity input (both legacy UnityEngine.Input
+    /// and the new Input System) does not deliver live mouse data to plugin code:
+    /// Mouse.current.position is frozen and IMGUI events never fire. So we read the
+    /// cursor and buttons straight from user32 and map desktop coords into the game
+    /// window's client area, which equals IMGUI/GUI coordinates (top-left origin).
+    /// Call Poll() once per frame; the accessors return the snapshot/edges.
+    /// </summary>
+    internal static class InputCompat
+    {
+        [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X; public int Y; }
+        [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
+        [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT p);
+        [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] private static extern IntPtr GetActiveWindow();
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+        [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+        [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+        [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr hWnd);
+        [DllImport("user32.dll")] private static extern bool ScreenToClient(IntPtr hWnd, ref POINT p);
+        [DllImport("user32.dll")] private static extern bool GetClientRect(IntPtr hWnd, out RECT r);
+        [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vKey);
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        private const string UnityWindowClass = "UnityWndClass";
+
+        private const int VK_LBUTTON = 0x01;
+        private const int VK_F9 = 0x78;
+        private const int VK_PRIOR = 0x21;  // PageUp
+        private const int VK_NEXT = 0x22;   // PageDown
+
+        private static int _cw, _ch, _rawX, _rawY;
+        private static float _sx = 1f, _sy = 1f;
+        private static IntPtr _window;
+        private static string _windowSource = "none";
+
+        private static Vector2 _pos;
+        private static bool _down, _pressed, _released;
+        private static bool _lb, _f9, _pgUp, _pgDn;            // previous key states
+        private static bool _f9Edge, _pgUpEdge, _pgDnEdge;
+
+        private static bool Key(int vk) => (GetAsyncKeyState(vk) & 0x8000) != 0;
+
+        private static int _polledFrame = -1;
+        public static void Poll()
+        {
+            // run at most once per frame even if several components call it
+            int frame = Time.frameCount;
+            if (frame == _polledFrame) return;
+            _polledFrame = frame;
+            try
+            {
+                if (GetCursorPos(out var p))
+                {
+                    _rawX = p.X; _rawY = p.Y;
+                    IntPtr h = ResolveGameWindow();
+                    var cp = p;
+                    if (h != IntPtr.Zero)
+                    {
+                        ScreenToClient(h, ref cp);
+                        if (GetClientRect(h, out var rc))
+                        {
+                            _cw = rc.Right - rc.Left;
+                            _ch = rc.Bottom - rc.Top;
+                        }
+                    }
+                    // Scale physical client pixels -> Unity GUI (logical) pixels so the
+                    // cursor lines up with the IMGUI rects regardless of DPI/resolution.
+                    _sx = _cw > 0 ? (float)Screen.width / _cw : 1f;
+                    _sy = _ch > 0 ? (float)Screen.height / _ch : 1f;
+                    _pos = new Vector2(cp.X * _sx, cp.Y * _sy);
+                }
+
+                bool lb = Key(VK_LBUTTON);
+                _pressed = lb && !_lb;
+                _released = !lb && _lb;
+                _down = lb; _lb = lb;
+
+                bool f9 = Key(VK_F9); _f9Edge = f9 && !_f9; _f9 = f9;
+                bool pu = Key(VK_PRIOR); _pgUpEdge = pu && !_pgUp; _pgUp = pu;
+                bool pd = Key(VK_NEXT); _pgDnEdge = pd && !_pgDn; _pgDn = pd;
+            }
+            catch { }
+        }
+
+        private static IntPtr ResolveGameWindow()
+        {
+            if (_window != IntPtr.Zero && IsWindow(_window))
+            {
+                return _window;
+            }
+
+            _window = FindUnityWindowForCurrentProcess();
+            if (_window != IntPtr.Zero)
+            {
+                _windowSource = "UnityWndClass/pid";
+                return _window;
+            }
+
+            _window = FindWindow(UnityWindowClass, null);
+            if (_window != IntPtr.Zero)
+            {
+                _windowSource = "UnityWndClass";
+                return _window;
+            }
+
+            _window = GetActiveWindow();
+            if (_window != IntPtr.Zero)
+            {
+                _windowSource = "active";
+                return _window;
+            }
+
+            _window = GetForegroundWindow();
+            _windowSource = _window != IntPtr.Zero ? "foreground" : "none";
+            return _window;
+        }
+
+        private static IntPtr FindUnityWindowForCurrentProcess()
+        {
+            uint currentPid = (uint)Process.GetCurrentProcess().Id;
+            IntPtr found = IntPtr.Zero;
+
+            EnumWindows((hWnd, _) =>
+            {
+                GetWindowThreadProcessId(hWnd, out uint pid);
+                if (pid != currentPid) return true;
+
+                var className = new StringBuilder(128);
+                if (GetClassName(hWnd, className, className.Capacity) <= 0) return true;
+                if (!string.Equals(className.ToString(), UnityWindowClass, StringComparison.Ordinal)) return true;
+
+                found = hWnd;
+                return false;
+            }, IntPtr.Zero);
+
+            return found;
+        }
+
+        public static Vector2 MouseGuiPos() => _pos;
+        public static bool MousePressed() => _pressed;
+        public static bool MouseHeld() => _down;
+        public static bool MouseReleased() => _released;
+        public static bool TogglePressed() => _f9Edge;
+        public static bool OpacityUpPressed() => _pgUpEdge;
+        public static bool OpacityDownPressed() => _pgDnEdge;
+
+        // General per-key edge detection for arbitrary hotkeys (e.g. the damage-taken
+        // panel's F10). Call at most once per frame per key.
+        private static readonly Dictionary<int, bool> _keyPrev = new Dictionary<int, bool>();
+        public static bool TogglePressed(KeyCode key) => KeyPressed(key);
+        public static bool KeyPressed(KeyCode key)
+        {
+            int vk = Vk(key);
+            if (vk == 0) return false;
+            bool down = Key(vk);
+            _keyPrev.TryGetValue(vk, out bool prev);
+            _keyPrev[vk] = down;
+            return down && !prev;
+        }
+
+        private static int Vk(KeyCode k)
+        {
+            if (k >= KeyCode.F1 && k <= KeyCode.F12) return 0x70 + (int)(k - KeyCode.F1); // F1=0x70
+            switch (k)
+            {
+                case KeyCode.PageUp: return 0x21;
+                case KeyCode.PageDown: return 0x22;
+                case KeyCode.Home: return 0x24;
+                case KeyCode.End: return 0x23;
+                case KeyCode.Insert: return 0x2D;
+                case KeyCode.Delete: return 0x2E;
+                case KeyCode.Tab: return 0x09;
+                case KeyCode.Backslash: return 0xDC;
+            }
+            if (k >= KeyCode.A && k <= KeyCode.Z) return 0x41 + (int)(k - KeyCode.A);
+            if (k >= KeyCode.Alpha0 && k <= KeyCode.Alpha9) return 0x30 + (int)(k - KeyCode.Alpha0);
+            return 0;
+        }
+
+        public static string Probe()
+            => $"cursorGui={_pos} raw=({_rawX},{_rawY}) hwnd=0x{_window.ToInt64():X} source={_windowSource} client={_cw}x{_ch} screen={Screen.width}x{Screen.height} scale=({_sx:0.###},{_sy:0.###}) down={_down}";
+    }
+}

@@ -1,0 +1,16 @@
+# Build output
+bin/
+obj/
+*.user
+
+# Large downloaded runtimes / build artifacts (shipped via GitHub Releases instead)
+dl/
+dist/
+_disabled/
+
+# IDE / OS
+.vs/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
