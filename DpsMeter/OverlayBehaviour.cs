@@ -391,7 +391,7 @@ namespace TbhDpsMeter
 
         private void DrawGraph(float x, float y, float w, float h, List<Sample> samples)
         {
-            DrawRect(x, y, w, h, new Color(0f, 0f, 0f, 0.35f));
+            DrawRect(x, y, w, h, new Color(0f, 0f, 0f, 1f));
             DrawRect(x, y + h - 1, w, 1, new Color(1f, 1f, 1f, 0.25f));   // baseline
 
             int n = samples != null ? samples.Count : 0;
