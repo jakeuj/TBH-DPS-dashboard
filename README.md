@@ -1,6 +1,6 @@
 # TBH DPS Meter
 
-**English** · [日本語](README.ja.md) · [繁體中文](README.zh-Hant.md)
+**English** · [日本語](README.ja.md) · [繁體中文](README.zh-Hant.md) · [简体中文](README.zh-Hans.md)
 
 In-game **DPS / damage-taken** overlay for **TaskBarHero** (TBH: Task Bar Hero),
 built as a BepInEx 6 IL2CPP plugin. Tested on game **v1.00.09** (Unity 6 / IL2CPP).

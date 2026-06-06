@@ -1,6 +1,6 @@
 # TBH DPS Meter
 
-[English](README.md) · [日本語](README.ja.md) · **繁體中文**
+[English](README.md) · [日本語](README.ja.md) · **繁體中文** · [简体中文](README.zh-Hans.md)
 
 **TaskBarHero**（TBH: Task Bar Hero）的遊戲內 **DPS / 承受傷害** 監控外掛，
 以 BepInEx 6 IL2CPP 外掛實作。測試版本 **v1.00.09**（Unity 6 / IL2CPP）。

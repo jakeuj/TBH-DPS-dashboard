@@ -1,0 +1,114 @@
+# TBH DPS Meter
+
+[English](README.md) · [日本語](README.ja.md) · [繁體中文](README.zh-Hant.md) · **简体中文**
+
+**TaskBarHero**（TBH: Task Bar Hero）的游戏内 **DPS / 承受伤害** 监控插件，
+以 BepInEx 6 IL2CPP 插件实现。测试版本 **v1.00.09**（Unity 6 / IL2CPP）。
+界面自动检测 **繁體中文 / 简体中文 / English / 日本語 / Español**。
+
+> ⬇️ **普通玩家只要到 [Releases](../../releases/latest) 下载 zip 就能用，不用编译。**
+
+![游戏内叠加面板](image/POWERPNT_xbsYSkt6By.png)
+
+<table>
+<tr>
+<td><img src="image/TaskBarHero_FkEGMBj3Kq.png" alt="DPS 面板"></td>
+<td><img src="image/TaskBarHero_3TGLxaOOR2.png" alt="承受伤害面板"></td>
+</tr>
+<tr>
+<td align="center"><b>DPS 面板</b>（你造成的伤害）</td>
+<td align="center"><b>承受伤害面板</b>（你受到的伤害）</td>
+</tr>
+</table>
+
+---
+
+## 显示内容
+
+**DPS 面板:**
+- 实时 DPS（5 秒滑动窗口）+ 峰值 + 平均
+- 总伤害 + 战斗时长 + 波数
+- 伤害类型分布（近战 / 投射 / 范围 / 召唤 / 持续 / 陷阱，含复合标记）
+- 暴击率 + 暴伤占比
+
+**承受伤害面板:**
+- 实时 DTPS（每秒承受）+ 峰值 + 平均
+- 总承受 + 时长 + 最大单次受击
+- **受击**（被打中的次数）+ **入站暴击**（怪物对你的暴击率）
+- 两条分布条：元素属性（物理/火/冰/雷/混沌）与伤害类型
+
+## 操作
+- **F9** — 显示/隐藏 DPS 面板（可设置：`ToggleKey`）
+- **F10** — 显示/隐藏 承受伤害面板（可设置：`TakenUI.ToggleKey`）
+- **鼠标拖拽** — 移动面板（位置自动记住，两面板独立）
+- 右上 **重置** 按钮归零重算；**◀ ▶** 翻看过去关卡记录
+- **PageUp / PageDown** — 调整面板透明度（两面板共用）
+
+> ⚠️ 面板点击会**穿透**到游戏（插件只被动读取鼠标、不拦截输入），战斗中点面板时角色仍会动作，这是正常行为。
+
+---
+
+## 安装
+
+### A. 首次安装（没装过 BepInEx）
+1. 到 **[Releases](../../releases/latest)** 下载 `TBH-DpsMeter-vX.Y.Z.zip`。
+2. Steam → 对「TBH: Task Bar Hero」右键 → 管理 → 浏览本地文件
+   （文件夹里会看到 `TaskBarHero.exe`）。
+3. 把 zip 里的**所有文件**解压进那个文件夹，让 `winhttp.dll`、`doorstop_config.ini`、
+   `dotnet`、`BepInEx` 跟 `TaskBarHero.exe` 在**同一层**（问是否覆盖选「是」）。
+4. **一定要通过 Steam 启动**游戏（直接点 exe 不会加载插件）。
+5. 第一次启动会黑屏 1～3 分钟（一次性分析），之后正常。
+
+### B. 更新插件（已经装过、只是换新版）
+**对，更新只要换 DLL 一个文件就好。** BepInEx 本体不用动。
+
+把新版 `TBH.DpsMeter.dll` 覆盖到：
+```
+<游戏文件夹>\BepInEx\plugins\TBH.DpsMeter.dll
+```
+> 覆盖前请**先完全关闭游戏**（运行中时 DLL 被占用，无法覆盖）。换完通过 Steam 重开即可。
+
+---
+
+## 设置
+配置文件：`<游戏文件夹>\BepInEx\config\tbh.dpsmeter.cfg`（第一次跑完才会生成）
+```
+[General]
+Language = Auto   # 可改成 zh-Hant / zh-Hans / en / ja / es 强制语言
+```
+
+## 卸载
+删掉游戏文件夹里的：`winhttp.dll`、`doorstop_config.ini`、`.doorstop_version`、
+`dotnet\`、`BepInEx\`，即可完全还原成原版。
+
+---
+
+## 从源码编译（开发者）
+```
+dotnet build DpsMeter/DpsMeter.csproj -c Release
+# 产物：DpsMeter\bin\Release\TBH.DpsMeter.dll
+copy DpsMeter\bin\Release\TBH.DpsMeter.dll  <游戏>\BepInEx\plugins\
+```
+重启游戏请**通过 Steam**（此 Unity 6 build 直接启动 exe 不会注入 BepInEx 的 winhttp proxy）。
+
+### 工作原理
+- **造成伤害：** Harmony postfix 挂在 `TaskbarHero.Monster.ebj(DamageInfo, bool)`，
+  以 `Unit.b_isHero` 过滤出玩家侧命中，读 `OriginDamage` / `IsCritical` / `DamageType`。
+- **承受伤害：** Harmony postfix 挂在 `TaskbarHero.Hero.ebj(DamageInfo, bool)`，计入攻击者
+  非玩家的命中，读 `OriginDamage` / `IsCritical` / `DamageType` / `DamageAttribute`。
+- **波次边界：** 轮询 `StageManager.stageState`（MONSTERSPAWN → BATTLE → REORGANIZATION），
+  每次 MONSTERSPAWN 重置、REORGANIZATION 冻结。
+- DPS / DTPS 计算在纯 C# 的 `DpsTracker` / `DamageTakenTracker`，并有单元测试（`TrackerTests`）。
+
+---
+
+## ⚠️ 免责声明
+本插件通过 BepInEx 注入游戏、仅**被动读取**伤害数据、不修改任何游戏数值，且本游戏为单机作品。
+但**任何第三方修改／注入工具都可能违反游戏或平台（如 Steam）的使用条款**，并存在导致账号被封、
+存档损坏或其他损失的风险。
+
+**使用本软件即代表你自行承担全部风险。** 对于因使用本插件而导致的任何账号封禁、停权、数据损坏或
+其他直接或间接损害，作者**概不负责**。若不接受此条件，请勿使用。
+
+## 许可证
+[MIT](LICENSE) © 2026 WarmBed
