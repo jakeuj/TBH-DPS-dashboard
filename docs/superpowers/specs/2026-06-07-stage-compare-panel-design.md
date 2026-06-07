@@ -94,6 +94,30 @@
 
 可行性結果寫回本文件後再進實作。
 
+## 可行性驗證結果（IL2CPP RE，2026-06-07）
+
+用 inspector dump interop 後確認資料路徑（成員名混淆，已用反射存取）：
+
+- **屬性**：`Hero.cache`(ug) → `.beib`(xe) → `Single nsc(StatType)`（候選 `nsc/kaq/kar/kap`，
+  哪個是「最終顯示值」需遊戲內驗證）。`StatType` 列舉完整（AttackDamage=1…MaxElementalDodgeChance=63）。
+- **裝備**：`cache.jhe()`/`brrd`/`jgr()` → 物件 `tf`；`tf.brke`(ItemInfoData) 有 `ItemKey/NameKey/GEARTYPE`；
+  詞綴在 `tf.bdzh..bdzl`(GearModData)：`iox()`=StatType、`ioy()`=值、`ioz()`=MODTYPE；唯一詞綴 `tf.oky()`→EGearUniqueMod。
+- **技能**：`Unit.bchl`(List<ActiveSkill>) → `sk.skillCache`(uo) → `.behi`(SkillInfoData) `SkillKey/SkillNameKey`；
+  等級候選 `uo.jjy()..jkm()`（需驗證哪個是等級）。
+- **關卡 ID**：`StageInfoData.Act` + `.StageNo` → `"Act-StageNo"`；目前經 Harmony 掛 `UI_Stage.hqk(StageCache,bool)`
+  postfix 擷取當前 StageCache（`becp`→StageInfoData）。
+- **名稱為在地化 key**：Item/Skill/Stage 的 `*NameKey` 都是 key 而非顯示字串；解析器未定位，面板暫顯示 key。
+
+## 遊戲內驗證清單（最後一步，需關遊戲先部署新 DLL）
+
+1. 設定檔 `[Debug] LogSnapshot = true`，透過 Steam 啟動。
+2. 打完一關，看 BepInEx log：
+   - `[snap stat getter] nsc(MaxHp)=…` 對照遊戲狀態面板的生命，確認 `nsc` 是否正確；不對則改 `StatGetters` 順序。
+   - `[snap skill getter] …` 對照技能等級，確認哪個 getter；更新 `SkillLevelGetters`。
+3. F11 開比較面板：確認 StageId 不是空/`0-0`（否則 `UI_Stage.hqk` 沒命中，需換 hook 點）。
+4. 確認裝備/技能有讀到（名稱為 key 可接受）；詞綴數值合理。
+5. 全部 OK 後發 v0.2.0 Release（含新 zip）。
+
 ## 範圍外（YAGNI）
 
 - 跨關卡比較、跨角色比較
