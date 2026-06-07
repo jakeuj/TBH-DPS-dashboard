@@ -55,7 +55,7 @@ namespace TbhDpsMeter
                             if (uid == 0) continue;
                             if (!byUid.TryGetValue(uid, out var item)) continue;
                             int itemKey = (int)Json.Num(Json.Get(item, "ItemKey"));
-                            var g = new GearItem { Slot = "slot" + slot, Name = "item" + itemKey, ItemKey = itemKey };
+                            var g = new GearItem { Slot = "slot" + slot, Name = "item" + itemKey, ItemKey = itemKey, Uid = (ulong)uid };
                             var ench = Json.Arr(Json.Get(item, "EnchantData"));
                             if (ench != null)
                                 foreach (var m in ench)

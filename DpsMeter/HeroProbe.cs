@@ -423,16 +423,41 @@ namespace TbhDpsMeter
 
         /// <summary>Resolve an item template key to its localized display name via ue.ti.isr(itemKey)
         /// -> ItemInfoData.NameKey -> game localizer. Returns "" if it can't be resolved.</summary>
-        public static string ResolveItemName(int itemKey)
+        // verified in-game: tf.ipp() / tf.brkr return the localized item name (e.g. 精英弓);
+        // iqu() returns the owner class name and the others are keys/garbage, so don't use them.
+        private static readonly string[] TfNameGetters = { "ipp", "brkr" };
+        private static bool _itemNameDiagDone;
+
+        public static string ResolveItemName(int itemKey, ulong uid)
         {
             try
             {
+                // The game displays item names from the live item object (tf). We have the plaintext
+                // uid from the save, so fetch tf via opd(uid) (single lookup, no ACTk enumeration)
+                // and try its name getters — these are what the inventory UI shows.
+                object item = uid != 0 ? ue.ti.opd(uid) : null;
+                bool diag = !_itemNameDiagDone && Plugin.DebugSnapshot != null && Plugin.DebugSnapshot.Value;
+                if (item != null)
+                {
+                    if (diag)
+                    {
+                        _itemNameDiagDone = true;
+                        var sb = new System.Text.StringBuilder($"[item] key={itemKey} tf gettters:");
+                        foreach (var g in TfNameGetters) sb.Append($" {g}='{Refl.Str(Refl.Call(item, g) ?? Refl.Get(item, g))}'");
+                        Plugin.Logger?.LogInfo(sb.ToString());
+                    }
+                    foreach (var g in TfNameGetters)
+                    {
+                        string s = Refl.Str(Refl.Call(item, g) ?? Refl.Get(item, g));
+                        if (Resolved(s, "") && !IsNumeric(s)) return s;
+                    }
+                }
+                // fall back: ItemInfoData.NameKey via localizer
                 var info = Refl.CallStatic("ue+ti", "isr", itemKey);   // ItemInfoData
                 string nameKey = Refl.Str(Refl.Get(info, "NameKey"));
                 if (string.IsNullOrEmpty(nameKey)) return "";
                 string name = GameLoc(nameKey);
                 if (Resolved(name, nameKey)) return name;
-                // item names aren't in the default table — try explicit item tables
                 foreach (var tbl in ItemTables)
                 {
                     string s = Refl.Str(Refl.CallStatic("nm", "gbt", tbl, nameKey));
@@ -441,6 +466,13 @@ namespace TbhDpsMeter
                 return "";
             }
             catch { return ""; }
+        }
+
+        private static bool IsNumeric(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return false;
+            foreach (var c in s) if (c < '0' || c > '9') return false;
+            return true;
         }
 
         /// <summary>Fill the character's stable id (HeroInfoData.HeroKey) and localized display name

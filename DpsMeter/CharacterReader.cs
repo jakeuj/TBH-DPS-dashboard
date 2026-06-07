@@ -47,7 +47,7 @@ namespace TbhDpsMeter
                     {
                         foreach (var g in gl)
                         {
-                            string nm = HeroProbe.ResolveItemName(g.ItemKey);   // ItemKey -> localized name
+                            string nm = HeroProbe.ResolveItemName(g.ItemKey, g.Uid);   // -> localized name
                             if (!string.IsNullOrEmpty(nm)) g.Name = nm;
                             snap.Equipment.Add(g);
                         }

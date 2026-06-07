@@ -32,6 +32,8 @@ namespace TbhDpsMeter
         public string Name = "";
         /// <summary>Item template key (transient; used to resolve the display name at capture). Not serialized.</summary>
         public int ItemKey;
+        /// <summary>Item instance uid from the save (transient; used to fetch the live item for name lookup).</summary>
+        public ulong Uid;
         public readonly List<Affix> Affixes = new List<Affix>();
     }
 
