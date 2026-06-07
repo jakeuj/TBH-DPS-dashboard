@@ -30,6 +30,12 @@ namespace TbhDpsMeter
         private readonly List<Rect> _charTabs = new List<Rect>();
         private int _charIndex;
 
+        // chart (dashboard) mode: a clear-time trend line; click a point to compare that run
+        private bool _chartMode = true;
+        private Rect _backRect;
+        private readonly List<Rect> _pointRects = new List<Rect>();
+        private readonly List<int> _pointRun = new List<int>();
+
         private List<RunRecord> _runs = new List<RunRecord>();
         private List<string> _stages = new List<string>();
         private readonly Dictionary<string, string> _pinned = new Dictionary<string, string>();
@@ -109,6 +115,15 @@ namespace TbhDpsMeter
                 if (_closeRect.Contains(m)) { _visible = false; return; }
                 if (_stagePrev.Contains(m)) { _stageIndex--; if (_stageIndex < 0) _stageIndex = Mathf.Max(0, _stages.Count - 1); _runIndex = CurrentGroup().Count - 1; return; }
                 if (_stageNext.Contains(m)) { _stageIndex++; if (_stageIndex >= _stages.Count) _stageIndex = 0; _runIndex = CurrentGroup().Count - 1; return; }
+                // chart mode: click a point to drill into the detailed compare for that run
+                if (_chartMode)
+                {
+                    for (int i = 0; i < _pointRects.Count; i++)
+                        if (_pointRects[i].Contains(m)) { _runIndex = _pointRun[i]; _chartMode = false; return; }
+                    if (_rect.Contains(m)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
+                    return;
+                }
+                if (_backRect.Contains(m)) { _chartMode = true; return; }
                 if (_runPrev.Contains(m)) { _runIndex = Mathf.Max(0, _runIndex - 1); return; }
                 if (_runNext.Contains(m)) { _runIndex = Mathf.Min(CurrentGroup().Count - 1, _runIndex + 1); return; }
                 if (_pinRect.Contains(m)) { TogglePin(); return; }
@@ -197,6 +212,9 @@ namespace TbhDpsMeter
                 string stage = _stages[_stageIndex];
                 _pinned.TryGetValue(stage, out var pinTitle);
                 var baseline = StageCompare.PickBaseline(group, pinTitle);
+
+                if (_chartMode) { DrawChart(group, baseline, stage, ix, iw, lh, fs); return; }
+
                 var current = group[_runIndex];
                 var chars = StageCompare.PartyCharacters(baseline, current);
                 if (chars.Count == 0) chars.Add("");
@@ -237,7 +255,9 @@ namespace TbhDpsMeter
 
                 // header: title + close
                 string sid = string.IsNullOrEmpty(stage) ? Loc.G("uncategorized") : stage;
-                GUI.Label(new Rect(ix, cy, iw - 28, lh), $"{Loc.G("compare_title")} <color=#7FB2FF>{sid}</color>", _title);
+                GUI.Label(new Rect(ix, cy, iw - 56, lh), $"{Loc.G("compare_title")} <color=#7FB2FF>{sid}</color>", _title);
+                _backRect = new Rect(x + w - 52, cy - 2, 22, lh);
+                GUI.Button(_backRect, "≡", _btn);
                 _closeRect = new Rect(x + w - 26, cy - 2, 22, lh);
                 GUI.Button(_closeRect, "✕", _btn);
                 cy += lh;
@@ -351,6 +371,87 @@ namespace TbhDpsMeter
                 }
             }
             catch { }
+        }
+
+        /// <summary>Dashboard: clear-time trend line for the stage. X = attempt (oldest→newest),
+        /// Y = clear seconds. Click a point to open the detailed compare for that run.</summary>
+        private void DrawChart(List<RunRecord> group, RunRecord baseline, string stage, float ix, float iw, float lh, int fs)
+        {
+            float x = _rect.x, w = _rect.width;
+            float plotH = 150f;
+            float h = Pad + lh /*header*/ + lh /*stage nav*/ + 16 + plotH + 18 /*plot + labels*/ + lh /*hint*/ + Pad;
+            _rect.height = h;
+            _rect.x = Mathf.Clamp(_rect.x, 0f, Mathf.Max(0f, Screen.width - _rect.width));
+            _rect.y = Mathf.Clamp(_rect.y, 0f, Mathf.Max(0f, Screen.height - _rect.height));
+            GUI.Box(_rect, GUIContent.none, _box);
+            _handleRect = new Rect(x, _rect.y, w, lh);
+
+            float cy = _rect.y + Pad;
+            string sid = string.IsNullOrEmpty(stage) ? Loc.G("uncategorized") : stage;
+            GUI.Label(new Rect(ix, cy, iw - 28, lh), $"{Loc.G("compare_title")} <color=#7FB2FF>{sid}</color>  <size=11>{Loc.G("trend")}</size>", _title);
+            _closeRect = new Rect(x + w - 26, cy - 2, 22, lh);
+            GUI.Button(_closeRect, "✕", _btn);
+            _backRect = new Rect(-10, -10, 1, 1);   // no-op in chart mode
+            cy += lh;
+
+            _stagePrev = new Rect(ix, cy, 26, lh - 2);
+            _stageNext = new Rect(ix + 30, cy, 26, lh - 2);
+            GUI.Button(_stagePrev, "≪", _btn);
+            GUI.Button(_stageNext, "≫", _btn);
+            GUI.Label(new Rect(ix + 62, cy, iw - 62, lh), $"<size=11>{_stageIndex + 1}/{_stages.Count}　{group.Count} {Loc.G("runs")}</size>", _dim);
+            cy += lh + 6;
+
+            // plot area
+            float px = ix + 28, pw = iw - 34, py = cy, ph = plotH;
+            DrawRect(px, py, pw, ph, new Color(0f, 0f, 0f, 1f));
+
+            _pointRects.Clear(); _pointRun.Clear();
+            int n = group.Count;
+            float maxDur = 1f, minDur = float.MaxValue;
+            foreach (var r in group) { if (r.Duration > maxDur) maxDur = r.Duration; if (r.Duration > 0 && r.Duration < minDur) minDur = r.Duration; }
+            if (minDur == float.MaxValue) minDur = 0f;
+            float span = Mathf.Max(1f, maxDur - minDur);
+
+            // y gridlines (min / max)
+            DrawRect(px, py, pw, 1, new Color(1, 1, 1, 0.12f));
+            DrawRect(px, py + ph - 1, pw, 1, new Color(1, 1, 1, 0.12f));
+            GUI.Label(new Rect(x + 2, py - 6, 28, 14), $"<size=9>{maxDur:0}s</size>", _tiny);
+            GUI.Label(new Rect(x + 2, py + ph - 12, 28, 14), $"<size=9>{minDur:0}s</size>", _tiny);
+
+            float dx = n > 1 ? pw / (n - 1) : 0f;
+            Vector2 prev = Vector2.zero;
+            for (int i = 0; i < n; i++)
+            {
+                var r = group[i];
+                float t = (r.Duration - minDur) / span;       // 0 = fastest (bottom-good)
+                float ptx = n > 1 ? px + dx * i : px + pw * 0.5f;
+                float pty = py + ph - 8 - t * (ph - 16);       // higher dur -> higher on screen
+                if (i > 0) DrawLine(prev, new Vector2(ptx, pty), new Color(0.45f, 0.7f, 1f, 0.9f));
+                prev = new Vector2(ptx, pty);
+                bool isBase = ReferenceEquals(r, baseline);
+                var col = isBase ? new Color(1f, 0.8f, 0.3f) : new Color(0.4f, 0.66f, 0.98f);
+                float ds = isBase ? 9f : 7f;
+                DrawRect(ptx - ds / 2, pty - ds / 2, ds, ds, col);
+                var hit = new Rect(ptx - 9, pty - 9, 18, 18);
+                _pointRects.Add(hit); _pointRun.Add(i);
+            }
+            // x labels: first / last attempt index
+            GUI.Label(new Rect(px - 4, py + ph + 2, 40, 14), "<size=9>#1</size>", _tiny);
+            if (n > 1) GUI.Label(new Rect(px + pw - 24, py + ph + 2, 30, 14), $"<size=9>#{n}</size>", _tiny);
+            cy = py + ph + 18;
+
+            GUI.Label(new Rect(ix, cy, iw, lh), $"<size=11><color=#FFC857>◆</color> {Loc.G("baseline")}　{Loc.G("chart_hint")}</size>", _dim);
+        }
+
+        private void DrawLine(Vector2 a, Vector2 b, Color c)
+        {
+            float len = Vector2.Distance(a, b);
+            int steps = Mathf.Max(1, Mathf.CeilToInt(len / 3f));
+            for (int i = 0; i <= steps; i++)
+            {
+                var p = Vector2.Lerp(a, b, i / (float)steps);
+                DrawRect(p.x - 1, p.y - 1, 2, 2, c);
+            }
         }
 
         private float CoreRow(float cy, float colW, float lx, float rx, string labelKey, StageCompare.CompareResult cmp, string metricKey, bool higherBetter, bool seconds, bool pct = false)

@@ -82,6 +82,9 @@ namespace TbhDpsMeter
             { "uncategorized",  new[] { "未分類", "Other", "未分類", "未分类", "Otros" } },
             { "lv",             new[] { "Lv", "Lv", "Lv", "Lv", "Nv" } },
             { "total_time",     new[] { "總時長", "Total", "総時間", "总时长", "Total" } },
+            { "trend",          new[] { "通關秒數趨勢", "Clear-time trend", "クリア秒数推移", "通关秒数趋势", "Tendencia" } },
+            { "runs",           new[] { "場", "runs", "回", "场", "part." } },
+            { "chart_hint",     new[] { "點某點看該場詳細比較", "click a point for details", "点で詳細比較", "点击查看详细", "click un punto" } },
             // common stat keys (StatType names from RE; unknown keys fall back to the raw name)
             { "attack",         new[] { "攻擊", "Attack", "攻撃", "攻击", "Ataque" } },
             { "aspd",           new[] { "攻速", "AtkSpd", "攻速", "攻速", "Vel.Atq" } },
