@@ -85,14 +85,41 @@ namespace TbhDpsMeter
             public readonly List<WaveDelta> Waves = new List<WaveDelta>();
             public readonly List<GearChange> Gear = new List<GearChange>();
             public readonly List<SkillChange> Skills = new List<SkillChange>();
+            /// <summary>Character ids present across both runs (for the panel's per-character tabs).</summary>
+            public readonly List<string> Characters = new List<string>();
+            /// <summary>The character id whose stats/gear/skills are in this result.</summary>
+            public string Character = "";
+        }
+
+        /// <summary>Union of character ids across two runs, in stable order (baseline first).</summary>
+        public static List<string> PartyCharacters(RunRecord baseline, RunRecord current)
+        {
+            var order = new List<string>(); var seen = new HashSet<string>();
+            void Add(RunRecord r) { if (r != null) foreach (var s in r.Party) if (s != null && seen.Add(s.Character)) order.Add(s.Character); }
+            Add(baseline); Add(current);
+            return order;
+        }
+
+        private static CharacterSnapshot SnapOf(RunRecord r, string charId)
+        {
+            if (r == null) return null;
+            foreach (var s in r.Party) if (s != null && s.Character == charId) return s;
+            // fall back to the first party member if the id isn't found (single-character / legacy runs)
+            return (charId == "" && r.Party.Count > 0) ? r.Party[0] : null;
         }
 
         // ---------- compare ----------
 
-        public static CompareResult Compare(RunRecord baseline, RunRecord current)
+        /// <summary>Compare current vs baseline. Run-level metrics/waves always; the per-character
+        /// stats/gear/skills use the snapshot matching <paramref name="charId"/> (defaults to the first character).</summary>
+        public static CompareResult Compare(RunRecord baseline, RunRecord current, string charId = null)
         {
             var res = new CompareResult { Baseline = baseline, Current = current, IsBaseline = ReferenceEquals(baseline, current) };
             if (baseline == null || current == null) return res;
+
+            res.Characters.AddRange(PartyCharacters(baseline, current));
+            if (charId == null) charId = res.Characters.Count > 0 ? res.Characters[0] : "";
+            res.Character = charId;
 
             void M(string key, double b, double c) => res.Metrics.Add(new MetricDelta { Key = key, Baseline = b, Current = c });
             M("duration", baseline.Duration, current.Duration);
@@ -103,10 +130,12 @@ namespace TbhDpsMeter
             M("crit", baseline.CritRate, current.CritRate);
             M("total", baseline.Total, current.Total);
 
-            DiffStats(baseline.Snapshot, current.Snapshot, res.Stats);
+            var bSnap = SnapOf(baseline, charId);
+            var cSnap = SnapOf(current, charId);
+            DiffStats(bSnap, cSnap, res.Stats);
             DiffWaves(baseline.WaveDurations, current.WaveDurations, res.Waves);
-            DiffGear(baseline.Snapshot, current.Snapshot, res.Gear);
-            DiffSkills(baseline.Snapshot, current.Snapshot, res.Skills);
+            DiffGear(bSnap, cSnap, res.Gear);
+            DiffSkills(bSnap, cSnap, res.Skills);
             return res;
         }
 

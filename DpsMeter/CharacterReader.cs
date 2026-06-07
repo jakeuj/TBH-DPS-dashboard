@@ -28,21 +28,39 @@ namespace TbhDpsMeter
             catch (Exception e) { Plugin.Logger?.LogWarning("CurrentStageId: " + e.Message); return ""; }
         }
 
-        /// <summary>Capture the player's loadout. Returns a snapshot with Captured=false if nothing could be read.</summary>
-        public static CharacterSnapshot Capture()
+        /// <summary>Capture every party member's loadout. One CharacterSnapshot per hero.</summary>
+        public static System.Collections.Generic.List<CharacterSnapshot> CaptureParty()
+        {
+            var list = new System.Collections.Generic.List<CharacterSnapshot>();
+            try
+            {
+                var heroes = HeroProbe.FindParty();
+                bool diag = Plugin.DebugSnapshot != null && Plugin.DebugSnapshot.Value;
+                foreach (var hero in heroes)
+                {
+                    if (hero == null) continue;
+                    var snap = CaptureOne(hero, diag);
+                    diag = false;   // only dump diagnostics once
+                    if (snap.Captured) list.Add(snap);
+                }
+            }
+            catch (Exception e) { Plugin.Logger?.LogWarning("CharacterReader.CaptureParty: " + e.Message); }
+            return list;
+        }
+
+        private static CharacterSnapshot CaptureOne(TaskbarHero.Hero hero, bool diag)
         {
             var snap = new CharacterSnapshot();
             try
             {
-                var hero = HeroProbe.FindHero();
-                if (hero == null) return snap;
-                if (Plugin.DebugSnapshot != null && Plugin.DebugSnapshot.Value) HeroProbe.Diagnose(hero);
+                if (diag) HeroProbe.Diagnose(hero);
+                snap.Character = HeroProbe.ReadCharacterId(hero);
                 HeroProbe.ReadStats(hero, snap);
                 HeroProbe.ReadGear(hero, snap);
                 HeroProbe.ReadSkills(hero, snap);
                 snap.Captured = snap.HasAny;
             }
-            catch (Exception e) { Plugin.Logger?.LogWarning("CharacterReader.Capture: " + e.Message); }
+            catch (Exception e) { Plugin.Logger?.LogWarning("CharacterReader.CaptureOne: " + e.Message); }
             return snap;
         }
     }

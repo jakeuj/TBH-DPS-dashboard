@@ -197,8 +197,8 @@ class Tests
         cs.Skills.Add(new SkillEntry("Shot", 4));   // level up 3->4
         // Trap removed
 
-        var rb = new RunRecord { Snapshot = bs };
-        var rc = new RunRecord { Snapshot = cs };
+        var rb = new RunRecord(); rb.Party.Add(bs);
+        var rc = new RunRecord(); rc.Party.Add(cs);
         var dres = StageCompare.Compare(rb, rc);
 
         var atk = dres.Stats.Find(m => m.Key == "attack");
@@ -225,11 +225,14 @@ class Tests
         var gb = new CharacterSnapshot { Captured = true };
         var gi2 = new GearItem { Slot = "w", Name = "Bow" }; gi2.Affixes.Add(new Affix("Fire", 20)); gi2.Affixes.Add(new Affix("Fire", 10));
         gb.Equipment.Add(gi2);
-        var gcmp = StageCompare.Compare(new RunRecord { Snapshot = ga }, new RunRecord { Snapshot = gb });
+        var rga = new RunRecord(); rga.Party.Add(ga);
+        var rgb = new RunRecord(); rgb.Party.Add(gb);
+        var gcmp = StageCompare.Compare(rga, rgb);
         Check("[cmp] reordered dup affixes = no change", gcmp.Gear.Count == 0, gcmp.Gear.Count);
         var gi3 = new GearItem { Slot = "w", Name = "Bow" }; gi3.Affixes.Add(new Affix("Fire", 10)); gi3.Affixes.Add(new Affix("Fire", 30));
         var gc2 = new CharacterSnapshot { Captured = true }; gc2.Equipment.Add(gi3);
-        var gcmp2 = StageCompare.Compare(new RunRecord { Snapshot = ga }, new RunRecord { Snapshot = gc2 });
+        var rgc2 = new RunRecord(); rgc2.Party.Add(gc2);
+        var gcmp2 = StageCompare.Compare(rga, rgc2);
         Check("[cmp] real affix change detected", gcmp2.Gear.Count == 1 && gcmp2.Gear[0].Kind == StageCompare.ChangeKind.Changed, gcmp2.Gear.Count);
     }
 
@@ -257,10 +260,12 @@ class Tests
         g.Affixes.Add(new Affix("Fire", 45)); g.Affixes.Add(new Affix("Crit", 5.5));
         snap.Equipment.Add(g);
         snap.Skills.Add(new SkillEntry("Arrow Rain", 3));
-        r.Snapshot = snap;
+        snap.Character = "priest";
+        r.Party.Add(snap);
 
         string text = RunSerializer.Serialize(r);
         var r2 = RunSerializer.Deserialize(text.Split('\n'));
+        var snap2 = r2.Party.Count > 0 ? r2.Party[0] : null;
 
         Check("[ser] title", r2.Title == r.Title, r2.Title);
         Check("[ser] stageid", r2.StageId == "3-6", r2.StageId);
@@ -271,12 +276,13 @@ class Tests
         Check("[ser] wavedur 3", r2.WaveDurations.Count == 3 && Near(r2.WaveDurations[2], 10.4, 0.05), r2.WaveDurations.Count);
         Check("[ser] samples 2", r2.Samples.Count == 2 && r2.Samples[1].Wave == 2, r2.Samples.Count);
         Check("[ser] taken hits", r2.TakenHits == 59, r2.TakenHits);
-        Check("[ser] snapshot captured", r2.Snapshot != null && r2.Snapshot.Captured, r2.Snapshot != null);
-        Check("[ser] snap stat", r2.Snapshot.Stats.Count == 1 && Near(r2.Snapshot.Stats[0].Value, 1240), r2.Snapshot.Stats.Count);
-        Check("[ser] snap gear+affixes", r2.Snapshot.Equipment.Count == 1 && r2.Snapshot.Equipment[0].Affixes.Count == 2, r2.Snapshot.Equipment.Count);
-        Check("[ser] gear name preserved", r2.Snapshot.Equipment[0].Name == "Flame Bow", r2.Snapshot.Equipment[0].Name);
-        Check("[ser] gear affix value", Near(r2.Snapshot.Equipment[0].Affixes[1].Value, 5.5), r2.Snapshot.Equipment[0].Affixes[1].Value);
-        Check("[ser] snap skill+level", r2.Snapshot.Skills.Count == 1 && r2.Snapshot.Skills[0].Level == 3, r2.Snapshot.Skills.Count);
+        Check("[ser] snapshot captured", snap2 != null && snap2.Captured, snap2 != null);
+        Check("[ser] character id", snap2.Character == "priest", snap2.Character);
+        Check("[ser] snap stat", snap2.Stats.Count == 1 && Near(snap2.Stats[0].Value, 1240), snap2.Stats.Count);
+        Check("[ser] snap gear+affixes", snap2.Equipment.Count == 1 && snap2.Equipment[0].Affixes.Count == 2, snap2.Equipment.Count);
+        Check("[ser] gear name preserved", snap2.Equipment[0].Name == "Flame Bow", snap2.Equipment[0].Name);
+        Check("[ser] gear affix value", Near(snap2.Equipment[0].Affixes[1].Value, 5.5), snap2.Equipment[0].Affixes[1].Value);
+        Check("[ser] snap skill+level", snap2.Skills.Count == 1 && snap2.Skills[0].Level == 3, snap2.Skills.Count);
 
         // v1 backward compat: old file with no version / no new fields
         string v1 = "title=old\ntotal=1000\nduration=30\navg=33\nwaves=5\ntype=1:1000\nhist=100:1,200:2\n";
@@ -284,7 +290,36 @@ class Tests
         Check("[ser] v1 loads title", r3.Title == "old", r3.Title);
         Check("[ser] v1 total", Near(r3.Total, 1000), r3.Total);
         Check("[ser] v1 no stageid", r3.StageId == "", r3.StageId);
-        Check("[ser] v1 no snapshot", r3.Snapshot == null, r3.Snapshot);
+        Check("[ser] v1 no party", r3.Party.Count == 0, r3.Party.Count);
         Check("[ser] v1 samples", r3.Samples.Count == 2, r3.Samples.Count);
+
+        // multi-character round-trip + legacy v2 single-snap compat
+        var rp = new RunRecord { StageId = "3-6" };
+        var pa = new CharacterSnapshot { Captured = true, Character = "hunter" }; pa.Stats.Add(new StatEntry("attack", 400));
+        var pb = new CharacterSnapshot { Captured = true, Character = "priest" }; pb.Skills.Add(new SkillEntry("Heal", 7));
+        rp.Party.Add(pa); rp.Party.Add(pb);
+        var rp2 = RunSerializer.Deserialize(RunSerializer.Serialize(rp).Split('\n'));
+        Check("[ser] party 2 chars", rp2.Party.Count == 2, rp2.Party.Count);
+        Check("[ser] char ids", rp2.Party[0].Character == "hunter" && rp2.Party[1].Character == "priest", rp2.Party[1].Character);
+        Check("[ser] char2 skill", rp2.Party[1].Skills.Count == 1 && rp2.Party[1].Skills[0].Level == 7, rp2.Party[1].Skills.Count);
+
+        string legacy = "version=2\ntitle=old\nsnap=1\nstat=attack:100\nskill=S\t3\n";
+        var rl = RunSerializer.Deserialize(legacy.Split('\n'));
+        Check("[ser] legacy snap -> 1 party member", rl.Party.Count == 1 && rl.Party[0].Stats.Count == 1, rl.Party.Count);
+
+        // per-character compare: same party, only priest's skill changed
+        var bRun = new RunRecord { StageId = "3-6", Duration = 70 };
+        var b1 = new CharacterSnapshot { Captured = true, Character = "hunter" }; b1.Skills.Add(new SkillEntry("Shot", 5));
+        var b2 = new CharacterSnapshot { Captured = true, Character = "priest" }; b2.Skills.Add(new SkillEntry("Heal", 3));
+        bRun.Party.Add(b1); bRun.Party.Add(b2);
+        var cRun = new RunRecord { StageId = "3-6", Duration = 80 };
+        var c1 = new CharacterSnapshot { Captured = true, Character = "hunter" }; c1.Skills.Add(new SkillEntry("Shot", 5));
+        var c2 = new CharacterSnapshot { Captured = true, Character = "priest" }; c2.Skills.Add(new SkillEntry("Heal", 6));
+        cRun.Party.Add(c1); cRun.Party.Add(c2);
+        Check("[ser] party chars listed", StageCompare.PartyCharacters(bRun, cRun).Count == 2, StageCompare.PartyCharacters(bRun, cRun).Count);
+        var hunterCmp = StageCompare.Compare(bRun, cRun, "hunter");
+        Check("[cmp] hunter unchanged skills", hunterCmp.Skills.Count == 0, hunterCmp.Skills.Count);
+        var priestCmp = StageCompare.Compare(bRun, cRun, "priest");
+        Check("[cmp] priest skill changed 3->6", priestCmp.Skills.Count == 1 && priestCmp.Skills[0].CurrentLevel == 6, priestCmp.Skills.Count);
     }
 }

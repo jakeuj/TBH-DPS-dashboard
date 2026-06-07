@@ -47,6 +47,8 @@ namespace TbhDpsMeter
     {
         /// <summary>True if a capture was attempted and at least some data was read.</summary>
         public bool Captured;
+        /// <summary>Stable per-character identity (class key / hero id) used to match across runs. "" = unknown.</summary>
+        public string Character = "";
         public readonly List<StatEntry> Stats = new List<StatEntry>();
         public readonly List<GearItem> Equipment = new List<GearItem>();
         public readonly List<SkillEntry> Skills = new List<SkillEntry>();
@@ -83,7 +85,8 @@ namespace TbhDpsMeter
         public float ActiveSeconds;
         /// <summary>Seconds with no outgoing damage (moving / running between packs).</summary>
         public float IdleSeconds;
-        /// <summary>Character loadout at the moment this run finished (may be null for old records).</summary>
-        public CharacterSnapshot Snapshot;
+        /// <summary>Per-character loadout snapshots (whole party) at the moment this run finished.
+        /// Empty for old records that had no snapshot.</summary>
+        public readonly List<CharacterSnapshot> Party = new List<CharacterSnapshot>();
     }
 }

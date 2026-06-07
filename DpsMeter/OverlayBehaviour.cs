@@ -256,7 +256,7 @@ namespace TbhDpsMeter
                 foreach (var p in s.ByType) { r.TypeFlags.Add(p.Flag); r.TypeAmounts.Add(p.Amount); }
                 foreach (var smp in _history) r.Samples.Add(smp);
                 r.WaveDurations.AddRange(_waveDurations);
-                r.Snapshot = CharacterReader.Capture();
+                r.Party.AddRange(CharacterReader.CaptureParty());
 
                 // fold in the damage-taken (defense) side of the same encounter
                 var ts = Plugin.TakenTracker.GetSnapshot(Time.time);

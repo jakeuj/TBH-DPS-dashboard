@@ -62,20 +62,21 @@ namespace TbhDpsMeter
             for (int i = 0; i < r.TakenTypeFlags.Count; i++)
                 sb.Append("taken_type=").Append(r.TakenTypeFlags[i]).Append(':').Append(r.TakenTypeAmounts[i].ToString(Inv)).Append('\n');
 
-            // character snapshot
-            if (r.Snapshot != null && r.Snapshot.Captured)
+            // character snapshots (whole party); each starts with a "char=" delimiter line
+            foreach (var snap in r.Party)
             {
-                sb.Append("snap=1\n");
-                foreach (var st in r.Snapshot.Stats)
+                if (snap == null || (!snap.Captured && !snap.HasAny)) continue;
+                sb.Append("char=").Append(Clean(snap.Character)).Append('\n');
+                foreach (var st in snap.Stats)
                     sb.Append("stat=").Append(Clean(st.Key)).Append(':').Append(st.Value.ToString(Inv)).Append('\n');
-                foreach (var g in r.Snapshot.Equipment)
+                foreach (var g in snap.Equipment)
                 {
                     sb.Append("gear=").Append(Clean(g.Slot)).Append(FS).Append(Clean(g.Name));
                     foreach (var a in g.Affixes)
                         sb.Append(FS).Append(Clean(a.Name)).Append('=').Append(a.Value.ToString(Inv));
                     sb.Append('\n');
                 }
-                foreach (var sk in r.Snapshot.Skills)
+                foreach (var sk in snap.Skills)
                     sb.Append("skill=").Append(Clean(sk.Name)).Append(FS).Append(sk.Level).Append('\n');
             }
 
@@ -86,7 +87,12 @@ namespace TbhDpsMeter
         {
             var r = new RunRecord();
             CharacterSnapshot snap = null;
-            CharacterSnapshot Snap() => snap ?? (snap = new CharacterSnapshot { Captured = true });
+            CharacterSnapshot Snap()
+            {
+                if (snap == null) { snap = new CharacterSnapshot { Captured = true }; r.Party.Add(snap); }
+                return snap;
+            }
+            void NewChar(string id) { snap = new CharacterSnapshot { Captured = true, Character = id }; r.Party.Add(snap); }
 
             foreach (var raw in lines)
             {
@@ -146,7 +152,8 @@ namespace TbhDpsMeter
                         if (ct > 0) { r.TakenTypeFlags.Add((int)D(v.Substring(0, ct))); r.TakenTypeAmounts.Add(D(v.Substring(ct + 1))); }
                         break;
                     }
-                    case "snap": Snap(); break;
+                    case "char": NewChar(v); break;
+                    case "snap": Snap(); break;   // legacy v2 single-character marker
                     case "stat":
                     {
                         int c = v.IndexOf(':');
@@ -178,7 +185,6 @@ namespace TbhDpsMeter
                 }
             }
 
-            r.Snapshot = snap;
             return r;
         }
 

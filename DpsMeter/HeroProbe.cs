@@ -343,13 +343,45 @@ namespace TbhDpsMeter
 
         public static Hero FindHero()
         {
+            try { return UnityEngine.Object.FindObjectOfType<Hero>(); }
+            catch { return null; }
+        }
+
+        /// <summary>All party heroes currently in the scene.</summary>
+        public static System.Collections.Generic.List<Hero> FindParty()
+        {
+            var list = new System.Collections.Generic.List<Hero>();
             try
             {
-                // prefer the hero list off StageManager if present, else any Hero in scene
-                var hero = UnityEngine.Object.FindObjectOfType<Hero>();
-                return hero;
+                var arr = UnityEngine.Object.FindObjectsOfType<Hero>();
+                if (arr != null) foreach (var h in arr) if (h != null) list.Add(h);
             }
-            catch { return null; }
+            catch { }
+            if (list.Count == 0) { var h = FindHero(); if (h != null) list.Add(h); }
+            return list;
+        }
+
+        // candidate accessors for a stable per-character class/id (refined via RE + in-game)
+        private static readonly string[] ClassMembers = { "befr" };
+
+        /// <summary>Stable per-character id for matching across runs (class key / hero id).
+        /// Best-effort until the exact obfuscated member is confirmed in-game.</summary>
+        public static string ReadCharacterId(Hero hero)
+        {
+            try
+            {
+                var cache = Refl.Get(hero, "cache");
+                // ug.befr -> HeroInfoData; look for a class/character key on it
+                var info = Refl.Get(cache, "befr");
+                foreach (var k in new[] { "ClassKey", "HeroKey", "CharacterKey", "NameKey", "JOB", "CLASS" })
+                {
+                    var v = Refl.Get(info, k);
+                    string s = Refl.Str(v);
+                    if (!string.IsNullOrEmpty(s) && s != "0") return s;
+                }
+            }
+            catch { }
+            return "";
         }
 
         public static void ReadStats(Hero hero, CharacterSnapshot snap)

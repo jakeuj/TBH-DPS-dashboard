@@ -27,6 +27,8 @@ namespace TbhDpsMeter
         private bool _stylesReady;
 
         private Rect _stagePrev, _stageNext, _runPrev, _runNext, _pinRect, _closeRect, _handleRect;
+        private readonly List<Rect> _charTabs = new List<Rect>();
+        private int _charIndex;
 
         private List<RunRecord> _runs = new List<RunRecord>();
         private List<string> _stages = new List<string>();
@@ -110,6 +112,8 @@ namespace TbhDpsMeter
                 if (_runPrev.Contains(m)) { _runIndex = Mathf.Max(0, _runIndex - 1); return; }
                 if (_runNext.Contains(m)) { _runIndex = Mathf.Min(CurrentGroup().Count - 1, _runIndex + 1); return; }
                 if (_pinRect.Contains(m)) { TogglePin(); return; }
+                for (int i = 0; i < _charTabs.Count; i++)
+                    if (_charTabs[i].Contains(m)) { _charIndex = i; return; }
                 if (_rect.Contains(m)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
             }
             if (_dragging)
@@ -156,7 +160,7 @@ namespace TbhDpsMeter
             _label.normal.textColor = new Color(0.93f, 0.93f, 0.93f);
             _dim = new GUIStyle { fontSize = fs - 2, richText = true };
             _dim.normal.textColor = new Color(0.78f, 0.84f, 0.95f);
-            _tiny = new GUIStyle { fontSize = Mathf.Max(9, fs - 4), richText = true };
+            _tiny = new GUIStyle { fontSize = Mathf.Max(9, fs - 4), richText = true, wordWrap = true };
             _tiny.normal.textColor = new Color(0.7f, 0.75f, 0.85f);
             _col = new GUIStyle { fontSize = fs, richText = true };
             _col.normal.textColor = Color.white;
@@ -194,9 +198,13 @@ namespace TbhDpsMeter
                 _pinned.TryGetValue(stage, out var pinTitle);
                 var baseline = StageCompare.PickBaseline(group, pinTitle);
                 var current = group[_runIndex];
-                var cmp = StageCompare.Compare(baseline, current);
+                var chars = StageCompare.PartyCharacters(baseline, current);
+                if (chars.Count == 0) chars.Add("");
+                _charIndex = Mathf.Clamp(_charIndex, 0, chars.Count - 1);
+                var cmp = StageCompare.Compare(baseline, current, chars[_charIndex]);
                 bool curIsBase = ReferenceEquals(baseline, current);
                 bool curPinned = pinTitle != null && current.Title == pinTitle;
+                bool hasTabs = chars.Count > 1;
 
                 // ---- measure height ----
                 int statRows = cmp.Stats.Count;
@@ -204,16 +212,20 @@ namespace TbhDpsMeter
                 int gearRows = cmp.Gear.Count;
                 int skillRows = cmp.Skills.Count;
                 float coreRows = 6f; // duration, active, idle, avg, peak, crit
+                var dist = MergedShares(baseline, current);
+                int distRows = Mathf.Min(dist.Count, 4);
                 float h = Pad
                     + lh                               // header
                     + lh                               // stage nav
                     + lh                               // run nav + pin
+                    + (hasTabs ? lh : 0)               // character tabs
                     + lh * coreRows                    // two-col core
                     + (statRows > 0 ? lh * 0.5f + lh * statRows : 0)
                     + lh + 14 + 14                     // dist header + 2 bars
+                    + lh * distRows                    // dist % legend
                     + lh + lh * waveRows               // wave header + rows
-                    + (gearRows > 0 ? lh + lh * gearRows : lh)
-                    + (skillRows > 0 ? lh + lh * skillRows : 0)
+                    + (gearRows > 0 ? lh + lh * 1.4f * gearRows : lh)
+                    + (skillRows > 0 ? lh + lh * 1.4f * skillRows : 0)
                     + Pad;
                 _rect.height = h;
                 _rect.x = Mathf.Clamp(_rect.x, 0f, Mathf.Max(0f, Screen.width - _rect.width));
@@ -247,6 +259,23 @@ namespace TbhDpsMeter
                 _pinRect = new Rect(x + w - Pad - 64, cy - 1, 64, lh);
                 GUI.Button(_pinRect, curPinned ? "📌" + Loc.G("pinned") : Loc.G("set_baseline"), _btn);
                 cy += lh;
+
+                // ---- character tabs (whole party) ----
+                _charTabs.Clear();
+                if (hasTabs)
+                {
+                    float tx = ix, tw = iw / Mathf.Min(chars.Count, 5);
+                    for (int i = 0; i < chars.Count && i < 5; i++)
+                    {
+                        var tr = new Rect(tx, cy, tw - 2, lh - 1);
+                        _charTabs.Add(tr);
+                        string label = Loc.Name(string.IsNullOrEmpty(chars[i]) ? "?" : chars[i]);
+                        bool sel = i == _charIndex;
+                        GUI.Label(tr, sel ? $"<b><color=#FFC857>[{label}]</color></b>" : $"<color=#9fb4cc>{label}</color>", _dim);
+                        tx += tw;
+                    }
+                    cy += lh;
+                }
 
                 // ---- two-column core ----
                 float colW = iw / 2f;
@@ -285,6 +314,15 @@ namespace TbhDpsMeter
                 DrawDist(ix + 36, cy, iw - 36, 11, current);
                 GUI.Label(new Rect(ix, cy - 1, 34, 12), $"<size=10>{Loc.G("this_run")}</size>", _tiny);
                 cy += 14;
+                // % legend: name baseline% -> this%
+                for (int i = 0; i < distRows; i++)
+                {
+                    var d = dist[i];
+                    string col = Mathf.Abs(d.cur - d.bas) < 0.001f ? "#aeb6c2" : (d.cur > d.bas ? "#5fd07c" : "#ef6a5a");
+                    string nm = Loc.Name(DpsTracker.DecodeName(d.flag));
+                    GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#{ColorHex(d.flag)}>■</color> {nm}  {d.bas * 100f:0.#}% → <color={col}>{d.cur * 100f:0.#}%</color>", _label);
+                    cy += lh;
+                }
 
                 // ---- per-wave ----
                 GUI.Label(new Rect(ix, cy, iw, lh), Loc.G("per_wave"), _dim); cy += lh;
@@ -303,13 +341,13 @@ namespace TbhDpsMeter
                 {
                     // nothing
                 }
-                foreach (var gc in cmp.Gear) { DrawGearChange(ix, cy, iw, lh, gc); cy += lh; }
+                foreach (var gc in cmp.Gear) { DrawGearChange(ix, cy, iw, lh * 1.4f, gc); cy += lh * 1.4f; }
 
                 // ---- skill changes ----
                 if (cmp.Skills.Count > 0)
                 {
                     GUI.Label(new Rect(ix, cy, iw, lh), Loc.G("skill_changes"), _dim); cy += lh;
-                    foreach (var sc in cmp.Skills) { DrawSkillChange(ix, cy, iw, lh, sc); cy += lh; }
+                    foreach (var sc in cmp.Skills) { DrawSkillChange(ix, cy, iw, lh * 1.4f, sc); cy += lh * 1.4f; }
                 }
             }
             catch { }
@@ -340,6 +378,38 @@ namespace TbhDpsMeter
             cy += lh;
             GUI.Label(new Rect(ix, cy, iw, lh), Loc.G("no_runs"), _dim);
             _handleRect = new Rect(_rect.x, _rect.y, _rect.width, lh);
+        }
+
+        /// <summary>Merge baseline+current damage-type shares by flag, sorted by the larger share.</summary>
+        private static List<(int flag, float bas, float cur)> MergedShares(RunRecord b, RunRecord c)
+        {
+            var bm = ShareMap(b); var cm = ShareMap(c);
+            var keys = new HashSet<int>(); var order = new List<int>();
+            foreach (var k in bm.Keys) if (keys.Add(k)) order.Add(k);
+            foreach (var k in cm.Keys) if (keys.Add(k)) order.Add(k);
+            var list = new List<(int, float, float)>();
+            foreach (var k in order)
+            {
+                bm.TryGetValue(k, out var bv); cm.TryGetValue(k, out var cv);
+                list.Add((k, bv, cv));
+            }
+            list.Sort((a, z) => Mathf.Max(z.Item2, z.Item3).CompareTo(Mathf.Max(a.Item2, a.Item3)));
+            return list;
+        }
+
+        private static Dictionary<int, float> ShareMap(RunRecord r)
+        {
+            var m = new Dictionary<int, float>();
+            if (r == null || r.Total <= 0) return m;
+            for (int i = 0; i < r.TypeFlags.Count && i < r.TypeAmounts.Count; i++)
+                if (r.TypeAmounts[i] > 0) m[r.TypeFlags[i]] = (float)(r.TypeAmounts[i] / r.Total);
+            return m;
+        }
+
+        private static string ColorHex(int flag)
+        {
+            var c = ColorForFlag(flag);
+            return $"{(int)(c.r * 255):X2}{(int)(c.g * 255):X2}{(int)(c.b * 255):X2}";
         }
 
         private void DrawDist(float x, float y, float w, float h, RunRecord r)
