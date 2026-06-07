@@ -269,9 +269,10 @@ namespace TbhDpsMeter
                 float detailH = Mathf.Max(leftH, rightH);
                 float h = Pad + lh /*header*/ + lh /*stage nav*/ + chartH + 18 + lh /*run nav*/ + (hasTabs ? lh : 0) + detailH + Pad;
                 _rect.height = h;
-                // keep a grab-handle on screen but allow the panel to extend past edges
-                _rect.x = Mathf.Clamp(_rect.x, -(_rect.width - 90f), Screen.width - 90f);
-                _rect.y = Mathf.Clamp(_rect.y, 0f, Mathf.Max(0f, Screen.height - lh - 4f));
+                // keep the WHOLE panel on-screen — Unity clips anything past the game window,
+                // so letting it go off-edge would just truncate it.
+                _rect.x = Mathf.Clamp(_rect.x, 0f, Mathf.Max(0f, Screen.width - _rect.width));
+                _rect.y = Mathf.Clamp(_rect.y, 0f, Mathf.Max(0f, Screen.height - _rect.height));
                 GUI.Box(_rect, GUIContent.none, _box);
 
                 float cy = _rect.y + Pad;
