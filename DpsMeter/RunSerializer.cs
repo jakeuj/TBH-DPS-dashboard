@@ -77,7 +77,7 @@ namespace TbhDpsMeter
                     sb.Append('\n');
                 }
                 foreach (var sk in snap.Skills)
-                    sb.Append("skill=").Append(Clean(sk.Name)).Append(FS).Append(sk.Level).Append('\n');
+                    sb.Append("skill=").Append(Clean(sk.Name)).Append(FS).Append(sk.Level).Append(FS).Append(sk.Key).Append('\n');
             }
 
             return sb.ToString();
@@ -186,7 +186,9 @@ namespace TbhDpsMeter
                     {
                         var parts = v.Split(FS);
                         if (parts.Length >= 1)
-                            Snap().Skills.Add(new SkillEntry(parts[0], parts.Length > 1 ? (int)D(parts[1]) : 0));
+                            Snap().Skills.Add(new SkillEntry(parts[0],
+                                parts.Length > 1 ? (int)D(parts[1]) : 0,
+                                parts.Length > 2 ? (int)D(parts[2]) : 0));
                         break;
                     }
                 }

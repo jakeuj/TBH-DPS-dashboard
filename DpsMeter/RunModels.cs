@@ -38,7 +38,9 @@ namespace TbhDpsMeter
     {
         public string Name;
         public int Level;
-        public SkillEntry(string name, int level) { Name = name; Level = level; }
+        /// <summary>Stable SkillKey for matching across runs (0 = unknown / legacy).</summary>
+        public int Key;
+        public SkillEntry(string name, int level, int key = 0) { Name = name; Level = level; Key = key; }
     }
 
     /// <summary>Character loadout snapshot taken when a stage run freezes.

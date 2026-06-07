@@ -517,7 +517,7 @@ namespace TbhDpsMeter
                         string nameKey = Refl.Str(Refl.Get(info, "SkillNameKey"));
                         string name = GameLoc(nameKey);
                         if (string.IsNullOrEmpty(name) || name == nameKey) name = string.IsNullOrEmpty(nameKey) ? "skill" + key : nameKey;
-                        snap.Skills.Add(new SkillEntry(name, ReadSkillLevel(sk, cache)));
+                        snap.Skills.Add(new SkillEntry(name, ReadSkillLevel(sk, cache), key));
                     }
                     catch { }
                 }

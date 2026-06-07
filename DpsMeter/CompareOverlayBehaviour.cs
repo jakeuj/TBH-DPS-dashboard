@@ -26,7 +26,8 @@ namespace TbhDpsMeter
         private GUIStyle _title, _label, _dim, _tiny, _btn, _box, _col;
         private bool _stylesReady;
 
-        private Rect _stagePrev, _stageNext, _runPrev, _runNext, _pinRect, _closeRect, _handleRect;
+        private Rect _stagePrev, _stageNext, _runPrev, _runNext, _pinRect, _closeRect, _handleRect, _resetAllRect;
+        private bool _confirmReset;
         private readonly List<Rect> _charTabs = new List<Rect>();
         private int _charIndex;
 
@@ -110,7 +111,14 @@ namespace TbhDpsMeter
             Vector2 m = InputCompat.MouseGuiPos();
             if (InputCompat.MousePressed())
             {
-                if (_closeRect.Contains(m)) { _visible = false; return; }
+                if (_closeRect.Contains(m)) { _visible = false; _confirmReset = false; return; }
+                if (_resetAllRect.Contains(m))
+                {
+                    if (_confirmReset) { RunStore.DeleteAll(); _confirmReset = false; _stageIndex = 0; _runIndex = 0; _charIndex = 0; Reload(); }
+                    else _confirmReset = true;
+                    return;
+                }
+                _confirmReset = false;   // any other click cancels the pending reset
                 if (_stagePrev.Contains(m)) { _stageIndex--; if (_stageIndex < 0) _stageIndex = Mathf.Max(0, _stages.Count - 1); _runIndex = CurrentGroup().Count - 1; return; }
                 if (_stageNext.Contains(m)) { _stageIndex++; if (_stageIndex >= _stages.Count) _stageIndex = 0; _runIndex = CurrentGroup().Count - 1; return; }
                 // chart points are always shown on top: clicking one selects that run for the detail below
@@ -251,21 +259,29 @@ namespace TbhDpsMeter
                     + (statRows > 0 ? lh * 0.5f + lh * statRows : 0)
                     + lh + 14 + 14 + lh * distRows
                     + lh + lh * waveRows;
-                float rightH = lh + lh * 1.4f * Mathf.Max(gearRows, 1)
-                    + (skillRows > 0 ? lh + lh * 1.4f * skillRows : 0);
+                int curSkills = cmp.CurrentSnap != null ? cmp.CurrentSnap.Skills.Count : 0;
+                int curGear = cmp.CurrentSnap != null ? cmp.CurrentSnap.Equipment.Count : 0;
+                int rmSkills = 0, rmGear = 0;
+                foreach (var sc in cmp.Skills) if (sc.Kind == StageCompare.ChangeKind.Removed) rmSkills++;
+                foreach (var gc in cmp.Gear) if (gc.Kind == StageCompare.ChangeKind.Removed) rmGear++;
+                float rightH = lh + lh * Mathf.Max(curSkills + rmSkills, 1)
+                    + lh * 0.4f + lh + lh * 1.4f * Mathf.Max(curGear + rmGear, 1);
                 float detailH = Mathf.Max(leftH, rightH);
                 float h = Pad + lh /*header*/ + lh /*stage nav*/ + chartH + 18 + lh /*run nav*/ + (hasTabs ? lh : 0) + detailH + Pad;
                 _rect.height = h;
-                _rect.x = Mathf.Clamp(_rect.x, 0f, Mathf.Max(0f, Screen.width - _rect.width));
-                _rect.y = Mathf.Clamp(_rect.y, 0f, Mathf.Max(0f, Screen.height - _rect.height));
+                // keep a grab-handle on screen but allow the panel to extend past edges
+                _rect.x = Mathf.Clamp(_rect.x, -(_rect.width - 90f), Screen.width - 90f);
+                _rect.y = Mathf.Clamp(_rect.y, 0f, Mathf.Max(0f, Screen.height - lh - 4f));
                 GUI.Box(_rect, GUIContent.none, _box);
 
                 float cy = _rect.y + Pad;
                 _handleRect = new Rect(x, _rect.y, w, lh);
 
-                // header
+                // header: title + reset-all + close
                 string sid = LocalizeStage(stage);
-                GUI.Label(new Rect(ix, cy, iw - 28, lh), $"{Loc.G("compare_title")} <color=#7FB2FF>{sid}</color>", _title);
+                GUI.Label(new Rect(ix, cy, iw - 120, lh), $"{Loc.G("compare_title")} <color=#7FB2FF>{sid}</color>", _title);
+                _resetAllRect = new Rect(x + w - 116, cy - 1, 86, lh);
+                GUI.Button(_resetAllRect, _confirmReset ? Loc.G("confirm_reset") : Loc.G("reset_all"), _btn);
                 _closeRect = new Rect(x + w - 26, cy - 2, 22, lh);
                 GUI.Button(_closeRect, "✕", _btn);
                 cy += lh;
@@ -364,17 +380,9 @@ namespace TbhDpsMeter
                     ly += lh;
                 }
 
-                // RIGHT column: gear + skill changes
+                // RIGHT column: FULL loadout of the selected character, with change markers vs baseline
                 float ry = cy;
-                GUI.Label(new Rect(rightColX, ry, rightColW, lh), Loc.G("gear_changes"), _dim); ry += lh;
-                if (cmp.Gear.Count == 0) { GUI.Label(new Rect(rightColX, ry, rightColW, lh), "<color=#8a93a0>—</color>", _tiny); ry += lh; }
-                foreach (var gc in cmp.Gear) { DrawGearChange(rightColX, ry, rightColW, lh * 1.4f, gc); ry += lh * 1.4f; }
-                if (cmp.Skills.Count > 0)
-                {
-                    ry += lh * 0.3f;
-                    GUI.Label(new Rect(rightColX, ry, rightColW, lh), Loc.G("skill_changes"), _dim); ry += lh;
-                    foreach (var sc in cmp.Skills) { DrawSkillChange(rightColX, ry, rightColW, lh * 1.4f, sc); ry += lh * 1.4f; }
-                }
+                ry = DrawLoadout(cmp, rightColX, ry, rightColW, lh);
             }
             catch { }
         }
@@ -503,6 +511,59 @@ namespace TbhDpsMeter
             parts.Sort((a, b) => b.share.CompareTo(a.share));
             float cx = x;
             foreach (var p in parts) { float seg = p.share * w; DrawRect(cx, y, seg, h, ColorForFlag(p.flag)); cx += seg; }
+        }
+
+        /// <summary>Right column: the selected character's full skill + gear list, colouring entries
+        /// that were added (green) or changed (yellow) vs the baseline, plus removed ones (red).</summary>
+        private float DrawLoadout(StageCompare.CompareResult cmp, float x, float y, float w, float lh)
+        {
+            var cur = cmp.CurrentSnap;
+            var bas = cmp.BaselineSnap;
+
+            // ---- skills ----
+            GUI.Label(new Rect(x, y, w, lh), Loc.G("skill_changes"), _dim); y += lh;
+            var baseSkill = new Dictionary<string, SkillEntry>();
+            if (bas != null) foreach (var s in bas.Skills) baseSkill[s.Key != 0 ? "k" + s.Key : s.Name] = s;
+            if (cur == null || cur.Skills.Count == 0) { GUI.Label(new Rect(x, y, w, lh), "<color=#8a93a0>—</color>", _tiny); y += lh; }
+            else foreach (var s in cur.Skills)
+            {
+                string id = s.Key != 0 ? "k" + s.Key : s.Name;
+                bool inBase = baseSkill.TryGetValue(id, out var b);
+                string txt, mark;
+                if (!inBase) { mark = "<color=#5fd07c>＋</color>"; txt = $"{s.Name} {Loc.G("lv")}{s.Level}"; }
+                else if (b.Level != s.Level) { mark = "<color=#e7c25a>~</color>"; txt = $"{s.Name} {Loc.G("lv")}<color=#e7c25a>{b.Level}→{s.Level}</color>"; }
+                else { mark = "<color=#8a93a0>·</color>"; txt = $"{s.Name} {Loc.G("lv")}{s.Level}"; }
+                GUI.Label(new Rect(x, y, w, lh), $"{mark} {txt}", _tiny); y += lh;
+            }
+            // removed skills
+            if (cur != null) { var curIds = new HashSet<string>(); foreach (var s in cur.Skills) curIds.Add(s.Key != 0 ? "k" + s.Key : s.Name);
+                if (bas != null) foreach (var s in bas.Skills) if (!curIds.Contains(s.Key != 0 ? "k" + s.Key : s.Name)) { GUI.Label(new Rect(x, y, w, lh), $"<color=#ef6a5a>− {s.Name} {Loc.G("lv")}{s.Level}</color>", _tiny); y += lh; } }
+
+            y += lh * 0.4f;
+            // ---- gear ----
+            GUI.Label(new Rect(x, y, w, lh), Loc.G("gear_changes"), _dim); y += lh;
+            var baseGear = new Dictionary<string, GearItem>();
+            if (bas != null) foreach (var g in bas.Equipment) baseGear[string.IsNullOrEmpty(g.Slot) ? g.Name : g.Slot] = g;
+            if (cur == null || cur.Equipment.Count == 0) { GUI.Label(new Rect(x, y, w, lh), "<color=#8a93a0>—</color>", _tiny); y += lh; }
+            else foreach (var g in cur.Equipment)
+            {
+                string id = string.IsNullOrEmpty(g.Slot) ? g.Name : g.Slot;
+                bool inBase = baseGear.TryGetValue(id, out var b);
+                string mark = !inBase ? "<color=#5fd07c>＋</color>" : (!GearSame(b, g) ? "<color=#e7c25a>~</color>" : "<color=#8a93a0>·</color>");
+                GUI.Label(new Rect(x, y, w, lh * 1.4f), $"{mark} {GearStr(g)}", _tiny); y += lh * 1.4f;
+            }
+            if (cur != null) { var curIds = new HashSet<string>(); foreach (var g in cur.Equipment) curIds.Add(string.IsNullOrEmpty(g.Slot) ? g.Name : g.Slot);
+                if (bas != null) foreach (var g in bas.Equipment) if (!curIds.Contains(string.IsNullOrEmpty(g.Slot) ? g.Name : g.Slot)) { GUI.Label(new Rect(x, y, w, lh * 1.4f), $"<color=#ef6a5a>− {GearStr(g)}</color>", _tiny); y += lh * 1.4f; } }
+            return y;
+        }
+
+        private static bool GearSame(GearItem a, GearItem b)
+        {
+            if (a == null || b == null) return false;
+            if (a.Name != b.Name || a.Affixes.Count != b.Affixes.Count) return false;
+            for (int i = 0; i < a.Affixes.Count; i++)
+                if (a.Affixes[i].Name != b.Affixes[i].Name || Mathf.Abs((float)(a.Affixes[i].Value - b.Affixes[i].Value)) > 1e-4f) return false;
+            return true;
         }
 
         private void DrawGearChange(float x, float y, float w, float lh, StageCompare.GearChange gc)

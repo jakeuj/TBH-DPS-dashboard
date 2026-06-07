@@ -79,6 +79,8 @@ namespace TbhDpsMeter
             { "skill_changes",  new[] { "技能變更", "Skills", "スキル変更", "技能变更", "Habilidades" } },
             { "stat_changes",   new[] { "屬性", "Stats", "ステータス", "属性", "Atributos" } },
             { "no_runs",        new[] { "尚無紀錄", "No runs yet", "記録なし", "尚无记录", "Sin datos" } },
+            { "reset_all",      new[] { "清除全部", "Reset all", "全削除", "清除全部", "Borrar todo" } },
+            { "confirm_reset",  new[] { "確認清除?", "Confirm?", "確認?", "确认清除?", "¿Confirmar?" } },
             { "uncategorized",  new[] { "未分類", "Other", "未分類", "未分类", "Otros" } },
             { "lv",             new[] { "Lv", "Lv", "Lv", "Lv", "Nv" } },
             { "total_time",     new[] { "總時長", "Total", "総時間", "总时长", "Total" } },

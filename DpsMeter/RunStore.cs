@@ -34,6 +34,20 @@ namespace TbhDpsMeter
             catch { }
         }
 
+        /// <summary>Delete all saved run records. Returns the number of files removed.</summary>
+        public static int DeleteAll()
+        {
+            int n = 0;
+            try
+            {
+                if (!Directory.Exists(Dir)) return 0;
+                foreach (var f in Directory.GetFiles(Dir, "run_*.txt"))
+                    try { File.Delete(f); n++; } catch { }
+            }
+            catch (Exception e) { Plugin.Logger?.LogError("RunStore.DeleteAll: " + e.Message); }
+            return n;
+        }
+
         /// <summary>Returns runs oldest..newest.</summary>
         public static List<RunRecord> LoadAll()
         {

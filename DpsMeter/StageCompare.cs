@@ -89,6 +89,8 @@ namespace TbhDpsMeter
             public readonly List<string> Characters = new List<string>();
             /// <summary>The character id whose stats/gear/skills are in this result.</summary>
             public string Character = "";
+            /// <summary>The matched character snapshots (for showing the full loadout, not just diffs).</summary>
+            public CharacterSnapshot BaselineSnap, CurrentSnap;
         }
 
         /// <summary>Union of character ids across two runs, in stable order (baseline first).</summary>
@@ -132,6 +134,7 @@ namespace TbhDpsMeter
 
             var bSnap = SnapOf(baseline, charId);
             var cSnap = SnapOf(current, charId);
+            res.BaselineSnap = bSnap; res.CurrentSnap = cSnap;
             DiffStats(bSnap, cSnap, res.Stats);
             DiffWaves(baseline.WaveDurations, current.WaveDurations, res.Waves);
             DiffGear(bSnap, cSnap, res.Gear);
@@ -233,27 +236,29 @@ namespace TbhDpsMeter
             return true;
         }
 
+        // stable id: SkillKey when known, else the name (legacy runs)
+        private static string SkillId(SkillEntry e) => e.Key != 0 ? "k" + e.Key : e.Name;
+
         private static void DiffSkills(CharacterSnapshot b, CharacterSnapshot c, List<SkillChange> outList)
         {
             var bm = SkillMap(b); var cm = SkillMap(c);
-            var keys = new List<string>();
-            var seen = new HashSet<string>();
-            foreach (var k in bm.Keys) if (seen.Add(k)) keys.Add(k);
-            foreach (var k in cm.Keys) if (seen.Add(k)) keys.Add(k);
-            foreach (var k in keys)
+            var ids = new List<string>(); var seen = new HashSet<string>();
+            foreach (var k in bm.Keys) if (seen.Add(k)) ids.Add(k);
+            foreach (var k in cm.Keys) if (seen.Add(k)) ids.Add(k);
+            foreach (var id in ids)
             {
-                bool hb = bm.TryGetValue(k, out var bl);
-                bool hc = cm.TryGetValue(k, out var cl);
-                if (hb && !hc) outList.Add(new SkillChange { Kind = ChangeKind.Removed, Name = k, BaselineLevel = bl });
-                else if (!hb && hc) outList.Add(new SkillChange { Kind = ChangeKind.Added, Name = k, CurrentLevel = cl });
-                else if (hb && hc && bl != cl) outList.Add(new SkillChange { Kind = ChangeKind.Changed, Name = k, BaselineLevel = bl, CurrentLevel = cl });
+                bool hb = bm.TryGetValue(id, out var bl);
+                bool hc = cm.TryGetValue(id, out var cl);
+                if (hb && !hc) outList.Add(new SkillChange { Kind = ChangeKind.Removed, Name = bl.Name, BaselineLevel = bl.Level });
+                else if (!hb && hc) outList.Add(new SkillChange { Kind = ChangeKind.Added, Name = cl.Name, CurrentLevel = cl.Level });
+                else if (hb && hc && bl.Level != cl.Level) outList.Add(new SkillChange { Kind = ChangeKind.Changed, Name = cl.Name, BaselineLevel = bl.Level, CurrentLevel = cl.Level });
             }
         }
 
-        private static Dictionary<string, int> SkillMap(CharacterSnapshot s)
+        private static Dictionary<string, SkillEntry> SkillMap(CharacterSnapshot s)
         {
-            var m = new Dictionary<string, int>();
-            if (s != null) foreach (var e in s.Skills) m[e.Name] = e.Level;
+            var m = new Dictionary<string, SkillEntry>();
+            if (s != null) foreach (var e in s.Skills) m[SkillId(e)] = e;
             return m;
         }
     }
