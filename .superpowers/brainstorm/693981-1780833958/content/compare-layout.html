@@ -1,0 +1,121 @@
+<style>
+  .panel { background:#0b0d12; border:1px solid #2a3340; border-radius:8px; padding:14px 16px; color:#e6e9ef; font-family:"Segoe UI",system-ui,sans-serif; }
+  .panel .ttl { color:#FFC857; font-weight:700; font-size:15px; margin-bottom:2px; }
+  .panel .sub { color:#7FB2FF; font-size:12px; margin-bottom:10px; }
+  .row { display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid #1a2029; font-size:13px; }
+  .row .k { color:#aeb6c2; }
+  .row .v { color:#fff; font-variant-numeric:tabular-nums; }
+  .up { color:#5fd07c; } .down { color:#ef6a5a; } .same{color:#8a93a0;}
+  .pill { font-size:11px; padding:1px 6px; border-radius:10px; background:#1c2530; color:#9fb4cc; margin-left:6px;}
+  .seg { display:flex; height:12px; border-radius:3px; overflow:hidden; margin:6px 0 2px; }
+  .grp { margin-top:10px; }
+  .grp h4 { font-size:12px; color:#cdd5df; margin:0 0 4px; text-transform:uppercase; letter-spacing:.04em;}
+  .chg { font-size:12px; padding:2px 0; }
+  .add{color:#5fd07c;} .rem{color:#ef6a5a;} .mod{color:#e7c25a;}
+  .twocol{display:flex; gap:0;}
+  .twocol .col{flex:1; padding:0 10px;}
+  .twocol .col:first-child{border-right:1px solid #232c38;}
+  .colhdr{font-size:12px;margin-bottom:6px;}
+  .small{font-size:11px;color:#8a93a0;}
+</style>
+
+<h2>比較面板要走哪種版面？</h2>
+<p class="subtitle">同一關（例：關卡 3-6）· 基準＝最快通關 72.8s · 對比＝你選的某一場 80.1s。綠＝比基準好，紅＝較差。</p>
+
+<div class="split">
+
+  <!-- ===== Option A: 單欄差異流 ===== -->
+  <div class="mockup">
+    <div class="mockup-header">A · 單欄差異流（緊湊，省空間）</div>
+    <div class="mockup-body">
+      <div class="panel" style="max-width:300px;margin:0 auto;">
+        <div class="ttl">關卡比較 3-6 <span class="pill">2/6 場</span></div>
+        <div class="sub">◀ ▶ 切換歷史場次　📌 設為基準</div>
+
+        <div class="row"><span class="k">時長</span><span class="v">80.1s <span class="down">▲+7.3s</span></span></div>
+        <div class="row"><span class="k">平均 DPS</span><span class="v">6.10K <span class="down">▼-9.4%</span></span></div>
+        <div class="row"><span class="k">峰值</span><span class="v">13.1K <span class="down">▼-1.9K</span></span></div>
+        <div class="row"><span class="k">暴擊率</span><span class="v">10.1% <span class="up">▲+0.2%</span></span></div>
+        <div class="row"><span class="k">總傷</span><span class="v">489K <span class="same">≈</span></span></div>
+
+        <div class="grp">
+          <h4>傷害分配（基準→這場）</h4>
+          <div class="seg">
+            <div style="width:58%;background:#4aa3ff"></div><div style="width:23%;background:#9b6cf0"></div>
+            <div style="width:13%;background:#46c46e"></div><div style="width:6%;background:#ef6a5a"></div>
+          </div>
+          <div class="small">投射 61%→58% · 投射+範圍 23%→23% · 召喚 9%→13%↑</div>
+        </div>
+
+        <div class="grp">
+          <h4>屬性變更</h4>
+          <div class="chg mod">攻擊力 1,240 → 1,180 <span class="down">(-60)</span></div>
+          <div class="chg up">攻速 1.45 → 1.62 (+0.17)</div>
+          <div class="chg same">暴傷 +150% （未變）</div>
+        </div>
+
+        <div class="grp">
+          <h4>裝備變更</h4>
+          <div class="chg rem">− 烈焰長弓 (+45 火傷)</div>
+          <div class="chg add">＋ 疾風短弓 (+18% 攻速)</div>
+          <div class="chg mod">~ 護符 詞綴 暴率+5%→+7%</div>
+        </div>
+
+        <div class="grp">
+          <h4>技能變更</h4>
+          <div class="chg add">＋ 箭雨 Lv3</div>
+          <div class="chg rem">− 火焰陷阱 Lv5</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Option B: 雙欄並排 ===== -->
+  <div class="mockup">
+    <div class="mockup-header">B · 雙欄並排（基準｜這場，一眼對照）</div>
+    <div class="mockup-body">
+      <div class="panel" style="max-width:340px;margin:0 auto;">
+        <div class="ttl">關卡比較 3-6 <span class="pill">2/6 場</span></div>
+        <div class="sub">◀ ▶ 切換　📌 設為基準</div>
+        <div class="twocol">
+          <div class="col">
+            <div class="colhdr"><span class="pill">📌 基準</span></div>
+            <div class="row"><span class="k">時長</span><span class="v">72.8s</span></div>
+            <div class="row"><span class="k">平均</span><span class="v">6.73K</span></div>
+            <div class="row"><span class="k">峰值</span><span class="v">15.0K</span></div>
+            <div class="row"><span class="k">暴率</span><span class="v">9.9%</span></div>
+            <div class="row"><span class="k">攻擊</span><span class="v">1,240</span></div>
+            <div class="row"><span class="k">攻速</span><span class="v">1.45</span></div>
+          </div>
+          <div class="col">
+            <div class="colhdr"><span class="pill">這場</span></div>
+            <div class="row"><span class="k">時長</span><span class="v down">80.1s</span></div>
+            <div class="row"><span class="k">平均</span><span class="v down">6.10K</span></div>
+            <div class="row"><span class="k">峰值</span><span class="v down">13.1K</span></div>
+            <div class="row"><span class="k">暴率</span><span class="v up">10.1%</span></div>
+            <div class="row"><span class="k">攻擊</span><span class="v down">1,180</span></div>
+            <div class="row"><span class="k">攻速</span><span class="v up">1.62</span></div>
+          </div>
+        </div>
+        <div class="grp">
+          <h4>裝備 / 技能差異</h4>
+          <div class="chg rem">− 烈焰長弓　＋ 疾風短弓</div>
+          <div class="chg add">＋ 箭雨 Lv3　− 火焰陷阱 Lv5</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="options" style="margin-top:18px;">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content"><h3>單欄差異流</h3><p>窄、省空間，直接看「變了多少」。適合疊在遊戲上不擋畫面。</p></div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content"><h3>雙欄並排</h3><p>基準｜這場 同時看到原值，對照直覺，但較寬。</p></div>
+  </div>
+</div>
+<p class="subtitle">看一下兩種，點一個你偏好的，或在終端跟我說想怎麼調。</p>
