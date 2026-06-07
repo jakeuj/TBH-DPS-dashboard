@@ -8,6 +8,9 @@ dl/
 dist/
 _disabled/
 
+# Brainstorm visual-companion scratch
+.superpowers/
+
 # IDE / OS
 .vs/
 .idea/
