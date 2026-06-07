@@ -538,7 +538,9 @@ namespace TbhDpsMeter
                         if (!seen.Add(key)) continue;                // de-dup across sources
                         string nameKey = Refl.Str(Refl.Get(info, "SkillNameKey"));
                         string name = GameLoc(nameKey);
-                        if (string.IsNullOrEmpty(name) || name == nameKey) name = string.IsNullOrEmpty(nameKey) ? "skill" + key : nameKey;
+                        // basic-attack skills (e.g. 20001/30001/40001) have no display name and aren't
+                        // shown in the game's skill list — skip them.
+                        if (string.IsNullOrEmpty(nameKey) || string.IsNullOrEmpty(name) || name == nameKey) continue;
                         snap.Skills.Add(new SkillEntry(name, ReadSkillLevel(sk, cache), key));
                     }
                     catch { }
