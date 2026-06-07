@@ -319,6 +319,24 @@ namespace TbhDpsMeter
                     object first = null; foreach (var it in Refl.Enumerate(v)) { first = it; break; }
                     Log($"hero.{fld} -> {v.GetType().FullName} count={cnt} first={(first?.GetType().FullName ?? "-")}");
                 }
+                // localization diagnostics: why are names resolving to English?
+                try
+                {
+                    const string LS = "UnityEngine.Localization.Settings.LocalizationSettings";
+                    var sel = Refl.CallStatic(LS, "get_SelectedLocale");
+                    Log($"SelectedLocale = '{Refl.Str(sel)}' name='{Refl.Str(Refl.Get(sel, "LocaleName"))}' id='{Refl.Str(Refl.Get(sel, "Identifier"))}'");
+                    var avail = Refl.CallStatic(LS, "get_AvailableLocales");
+                    var locales = Refl.Get(avail, "Locales");
+                    int li = 0;
+                    foreach (var loc in Refl.Enumerate(locales))
+                    { Log($"  locale[{li++}] = '{Refl.Str(loc)}' id='{Refl.Str(Refl.Get(loc, "Identifier"))}'"); if (li > 8) break; }
+                    // try resolving a hero name + a skill name via gbs/gbu
+                    var c0 = Refl.Get(hero, "cache"); var hi = Refl.Get(c0, "befr");
+                    string hnk = Refl.Str(Refl.Get(hi, "HeroNameKey"));
+                    Log($"HeroNameKey='{hnk}' gbs='{Refl.Str(Refl.CallStatic("nm", "gbs", hnk))}' gbu='{Refl.Str(Refl.CallStatic("nm", "gbu", hnk))}'");
+                }
+                catch (Exception le) { Log("loc diag ex: " + le.Message); }
+
                 // skill level probing on the real equipped list (bchd)
                 foreach (var sk in Refl.Enumerate(Refl.Get(hero, "bchd")))
                 {
@@ -369,9 +387,13 @@ namespace TbhDpsMeter
         public static string GameLoc(string key)
         {
             if (string.IsNullOrEmpty(key)) return key;
+            // nm.gbu resolves in the game's CURRENT language (verified: HeroName_201 -> 遊俠);
+            // nm.gbs returns English. Prefer gbu, fall back to gbs, then the raw key.
             try
             {
-                string s = Refl.Str(Refl.CallStatic("nm", "gbs", key));
+                string s = Refl.Str(Refl.CallStatic("nm", "gbu", key));
+                if (!string.IsNullOrEmpty(s) && s != key) return s;
+                s = Refl.Str(Refl.CallStatic("nm", "gbs", key));
                 if (!string.IsNullOrEmpty(s)) return s;
             }
             catch { }

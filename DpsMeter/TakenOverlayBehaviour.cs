@@ -167,6 +167,7 @@ namespace TbhDpsMeter
         void OnGUI()
         {
             if (!_visible) return;
+            GUI.depth = 10;   // below the F11 compare panel
             try
             {
                 EnsureAssets();

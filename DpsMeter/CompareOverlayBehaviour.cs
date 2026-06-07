@@ -219,6 +219,7 @@ namespace TbhDpsMeter
         void OnGUI()
         {
             if (!_visible) return;
+            GUI.depth = -10;   // lower depth renders on top of the F9/F10 panels
             try
             {
                 EnsureAssets();
