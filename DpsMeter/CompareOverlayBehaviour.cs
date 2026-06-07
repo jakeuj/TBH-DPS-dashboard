@@ -41,6 +41,7 @@ namespace TbhDpsMeter
         private int _stageIndex;
         private int _runIndex;
         private bool _loaded;
+        private int _seenVersion = -1;
 
         void Awake()
         {
@@ -69,6 +70,8 @@ namespace TbhDpsMeter
                     _visible = !_visible;
                     if (_visible) Reload();
                 }
+                // auto-refresh when a run is saved/deleted while the panel is open
+                if (_visible && RunStore.Version != _seenVersion) Reload();
                 if (_visible) HandlePointer();
                 else if (_dragging) _dragging = false;
             }
@@ -77,6 +80,7 @@ namespace TbhDpsMeter
 
         private void Reload()
         {
+            _seenVersion = RunStore.Version;
             _runs = RunStore.LoadAll();
             var groups = StageCompare.GroupByStage(_runs);
             // order stages by the recency of their newest run (newest stage first)

@@ -11,6 +11,9 @@ namespace TbhDpsMeter
         private const int MaxRuns = 60;
         private static string Dir => Path.Combine(BepInEx.Paths.ConfigPath, "dpsmeter_runs");
 
+        /// <summary>Bumped whenever the saved set changes (save / delete), so open UIs can auto-refresh.</summary>
+        public static int Version;
+
         public static void Save(RunRecord r)
         {
             try
@@ -19,6 +22,7 @@ namespace TbhDpsMeter
                 string file = Path.Combine(Dir, "run_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".txt");
                 File.WriteAllText(file, RunSerializer.Serialize(r));
                 Prune();
+                Version++;
             }
             catch (Exception e) { Plugin.Logger?.LogError("RunStore.Save: " + e.Message); }
         }
@@ -43,6 +47,7 @@ namespace TbhDpsMeter
                 if (!Directory.Exists(Dir)) return 0;
                 foreach (var f in Directory.GetFiles(Dir, "run_*.txt"))
                     try { File.Delete(f); n++; } catch { }
+                Version++;
             }
             catch (Exception e) { Plugin.Logger?.LogError("RunStore.DeleteAll: " + e.Message); }
             return n;
