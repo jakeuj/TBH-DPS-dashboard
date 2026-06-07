@@ -30,6 +30,8 @@ namespace TbhDpsMeter
     {
         public string Slot = "";
         public string Name = "";
+        /// <summary>Item template key (transient; used to resolve the display name at capture). Not serialized.</summary>
+        public int ItemKey;
         public readonly List<Affix> Affixes = new List<Affix>();
     }
 

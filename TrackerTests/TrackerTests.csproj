@@ -12,5 +12,6 @@
     <Compile Include="..\DpsMeter\RunModels.cs" />
     <Compile Include="..\DpsMeter\RunSerializer.cs" />
     <Compile Include="..\DpsMeter\StageCompare.cs" />
+    <Compile Include="..\DpsMeter\Json.cs" />
   </ItemGroup>
 </Project>

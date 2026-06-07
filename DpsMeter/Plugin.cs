@@ -120,6 +120,7 @@ namespace TbhDpsMeter
                 Logger.LogError("Failed to create overlay: " + ex);
             }
 
+
             Logger.LogInfo($"{Name} {Version} loaded.");
         }
 

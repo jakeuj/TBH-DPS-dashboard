@@ -399,6 +399,9 @@ namespace TbhDpsMeter
 
         /// <summary>Resolve a localization key to the in-game display string via the game's
         /// Unity-Localization facade (nm.gbs). Falls back to the key if unavailable.</summary>
+        private static bool Resolved(string s, string key)
+            => !string.IsNullOrEmpty(s) && s != key && s.IndexOf("No translation", StringComparison.Ordinal) < 0;
+
         public static string GameLoc(string key)
         {
             if (string.IsNullOrEmpty(key)) return key;
@@ -407,12 +410,37 @@ namespace TbhDpsMeter
             try
             {
                 string s = Refl.Str(Refl.CallStatic("nm", "gbu", key));
-                if (!string.IsNullOrEmpty(s) && s != key) return s;
+                if (Resolved(s, key)) return s;
                 s = Refl.Str(Refl.CallStatic("nm", "gbs", key));
-                if (!string.IsNullOrEmpty(s)) return s;
+                if (Resolved(s, key)) return s;
             }
             catch { }
             return key;
+        }
+
+        // item names live in a non-default Localization table; try gbt(table, key) candidates.
+        private static readonly string[] ItemTables = { "Item", "Items", "ItemTable", "ItemName", "Equipment", "Gear" };
+
+        /// <summary>Resolve an item template key to its localized display name via ue.ti.isr(itemKey)
+        /// -> ItemInfoData.NameKey -> game localizer. Returns "" if it can't be resolved.</summary>
+        public static string ResolveItemName(int itemKey)
+        {
+            try
+            {
+                var info = Refl.CallStatic("ue+ti", "isr", itemKey);   // ItemInfoData
+                string nameKey = Refl.Str(Refl.Get(info, "NameKey"));
+                if (string.IsNullOrEmpty(nameKey)) return "";
+                string name = GameLoc(nameKey);
+                if (Resolved(name, nameKey)) return name;
+                // item names aren't in the default table — try explicit item tables
+                foreach (var tbl in ItemTables)
+                {
+                    string s = Refl.Str(Refl.CallStatic("nm", "gbt", tbl, nameKey));
+                    if (Resolved(s, nameKey)) return s;
+                }
+                return "";
+            }
+            catch { return ""; }
         }
 
         /// <summary>Fill the character's stable id (HeroInfoData.HeroKey) and localized display name
@@ -495,21 +523,44 @@ namespace TbhDpsMeter
                 // The equipped-uid collection (IReadOnlyCollection<ObscuredULong>) resists reflection
                 // enumeration. Try to TryCast it to a concrete Il2Cpp List we can index; log the real
                 // runtime type + cast results so we can pin down the right path in-game.
-                object col = hero.cache.brqt;
-                if (col == null) return;
-                var bo = col as Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase;
-                var asList = bo?.TryCast<Il2CppSystem.Collections.Generic.List<CodeStage.AntiCheat.ObscuredTypes.ObscuredULong>>();
-                if (Plugin.DebugSnapshot != null && Plugin.DebugSnapshot.Value)
-                    Plugin.Logger?.LogInfo($"[gear] brqt type={col.GetType().FullName} asList={asList != null} ienumNG={(bo?.TryCast<Il2CppSystem.Collections.IEnumerable>() != null)}");
-                if (asList == null) return;
-                for (int gidx = 0; gidx < asList.Count; gidx++)
+                // The IReadOnlyCollection<ObscuredULong> can't be reflection-enumerated or cast to a
+                // concrete List, but it DOES TryCast to the non-generic Il2Cpp IEnumerable (verified
+                // in-game), whose enumerator we can drive. ue.ti.opd(uid) -> item (tf).
+                object colObj = hero.cache.brqt;
+                var col = colObj as Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase;
+                var seq = col?.TryCast<Il2CppSystem.Collections.IEnumerable>();
+                bool dbg0 = Plugin.DebugSnapshot != null && Plugin.DebugSnapshot.Value;
+                if (dbg0)
+                {
+                    int rc = -1; try { var c = Refl.Get(colObj, "Count"); if (c != null) rc = Convert.ToInt32(c); } catch { }
+                    var e0 = seq != null ? seq.GetEnumerator() : null;
+                    bool mv0 = false; object cur0 = null;
+                    try { if (e0 != null) { mv0 = e0.MoveNext(); cur0 = e0.Current; } } catch (Exception ex0) { Plugin.Logger?.LogInfo("[gear] enum ex: " + ex0.Message); }
+                    Plugin.Logger?.LogInfo($"[gear] reflCount={rc} seqNN={seq != null} enumNN={e0 != null} firstMoveNext={mv0} cur0={(cur0 != null ? cur0.GetType().Name : "null")}");
+                }
+                if (seq == null) return;
+                // Collect the raw Current objects FIRST, without converting. ObscuredULong (ACTk)
+                // re-encrypts itself on ToString/cast, which writes back into the collection and
+                // invalidates the enumerator ("Collection was modified"). So defer conversion +
+                // ue.ti.opd() lookups until after enumeration completes.
+                var raw = new System.Collections.Generic.List<object>();
+                var en = seq.GetEnumerator();
+                int guard = 0;
+                try { while (en != null && guard++ < 64 && en.MoveNext()) raw.Add(en.Current); }
+                catch { }   // if the game still mutates it, use whatever we gathered
+                bool dbg = Plugin.DebugSnapshot != null && Plugin.DebugSnapshot.Value;
+                if (dbg) Plugin.Logger?.LogInfo($"[gear] raw uid count = {raw.Count}");
+                int gdiag = 0;
+                foreach (var rawUid in raw)
                 {
                     try
                     {
-                        ulong uid = Refl.ToUL((object)asList[gidx]);
-                        if (uid == 0) continue;
+                        ulong uid = Refl.ToUL(rawUid);
                         object item = ue.ti.opd(uid);
                         if (item == null) item = ue.ti.ish(uid);
+                        if (dbg && gdiag++ < 4)
+                            Plugin.Logger?.LogInfo($"[gear] rawType={rawUid?.GetType().Name} rawStr='{Refl.Str(rawUid)}' uid={uid} opd={(item != null ? item.GetType().Name : "null")} name={(item != null ? Refl.Str(Refl.Get(Refl.Get(item, "brke"), "NameKey")) : "")}");
+                        if (uid == 0) continue;
                         if (item == null) continue;
 
                         var g = new GearItem();

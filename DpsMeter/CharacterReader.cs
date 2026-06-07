@@ -35,12 +35,24 @@ namespace TbhDpsMeter
             try
             {
                 var heroes = HeroProbe.FindParty();
+                var saveGear = SaveGearReader.ReadParty();   // gear from the decrypted save, keyed by heroKey
                 bool diag = Plugin.DebugSnapshot != null && Plugin.DebugSnapshot.Value;
                 foreach (var hero in heroes)
                 {
                     if (hero == null) continue;
                     var snap = CaptureOne(hero, diag);
                     diag = false;   // only dump diagnostics once
+                    // attach gear from the save by heroKey (snap.Character is the HeroKey string)
+                    if (int.TryParse(snap.Character, out int hk) && saveGear.TryGetValue(hk, out var gl))
+                    {
+                        foreach (var g in gl)
+                        {
+                            string nm = HeroProbe.ResolveItemName(g.ItemKey);   // ItemKey -> localized name
+                            if (!string.IsNullOrEmpty(nm)) g.Name = nm;
+                            snap.Equipment.Add(g);
+                        }
+                    }
+                    snap.Captured = snap.HasAny;
                     if (snap.Captured) list.Add(snap);
                 }
             }
@@ -56,9 +68,8 @@ namespace TbhDpsMeter
                 if (diag) HeroProbe.Diagnose(hero);
                 HeroProbe.ReadIdentity(hero, snap);
                 HeroProbe.ReadStats(hero, snap);
-                HeroProbe.ReadGear(hero, snap);
+                // gear comes from the decrypted save (see CaptureParty); ReadGear (ACTk) is unused
                 HeroProbe.ReadSkills(hero, snap);
-                snap.Captured = snap.HasAny;
             }
             catch (Exception e) { Plugin.Logger?.LogWarning("CharacterReader.CaptureOne: " + e.Message); }
             return snap;

@@ -135,6 +135,7 @@ class Tests
 
         StageCompareTests();
         SerializerTests();
+        JsonTests();
 
         Console.WriteLine(_fail == 0 ? "\nALL TESTS PASSED" : $"\n{_fail} TEST(S) FAILED");
         return _fail == 0 ? 0 : 1;
@@ -234,6 +235,28 @@ class Tests
         var rgc2 = new RunRecord(); rgc2.Party.Add(gc2);
         var gcmp2 = StageCompare.Compare(rga, rgc2);
         Check("[cmp] real affix change detected", gcmp2.Gear.Count == 1 && gcmp2.Gear[0].Kind == StageCompare.ChangeKind.Changed, gcmp2.Gear.Count);
+    }
+
+    // ================= Json parser =================
+    static void JsonTests()
+    {
+        Console.WriteLine("\n-- Json --");
+        // mimic the decrypted save shape: PlayerSaveData.value is a stringified JSON
+        string inner = "{\\\"heroSaveDatas\\\":[{\\\"heroKey\\\":401,\\\"equippedItemIds\\\":[552399407316076264,0,0]}],\\\"inventorySaveDatas\\\":{\\\"itemSaveDatas\\\":[{\\\"UniqueId\\\":552399407316076264,\\\"ItemKey\\\":520011,\\\"EnchantData\\\":[{\\\"StatType\\\":25,\\\"Value\\\":45},{\\\"StatType\\\":0,\\\"Value\\\":0}]}]}}";
+        string outer = "{ \"PlayerSaveData\": { \"__type\":\"string\", \"value\": \"" + inner + "\" } }";
+        var root = Json.Parse(outer);
+        string val = Json.Str(Json.Get(Json.Get(root, "PlayerSaveData"), "value"));
+        Check("[json] outer.value is string", val != null && val.StartsWith("{"), val == null ? "null" : val.Substring(0, 5));
+        var parsed = Json.Parse(val);
+        var heroes = Json.Arr(Json.Get(parsed, "heroSaveDatas"));
+        Check("[json] 1 hero", heroes != null && heroes.Count == 1, heroes?.Count);
+        Check("[json] heroKey 401", (int)Json.Num(Json.Get(heroes[0], "heroKey")) == 401, Json.Num(Json.Get(heroes[0], "heroKey")));
+        var eq = Json.Arr(Json.Get(heroes[0], "equippedItemIds"));
+        Check("[json] equipped uid", Json.Long(eq[0]) == 552399407316076264L, Json.Long(eq[0]));
+        var items = Json.Arr(Json.Get(Json.Get(parsed, "inventorySaveDatas"), "itemSaveDatas"));
+        Check("[json] item ItemKey 520011", (int)Json.Num(Json.Get(items[0], "ItemKey")) == 520011, Json.Num(Json.Get(items[0], "ItemKey")));
+        var ench = Json.Arr(Json.Get(items[0], "EnchantData"));
+        Check("[json] enchant StatType 25 val 45", (int)Json.Num(Json.Get(ench[0], "StatType")) == 25 && Json.Num(Json.Get(ench[0], "Value")) == 45, "");
     }
 
     // ================= RunSerializer round-trip =================
