@@ -272,7 +272,7 @@ namespace TbhDpsMeter
                 foreach (var sc in cmp.Skills) if (sc.Kind == StageCompare.ChangeKind.Removed) rmSkills++;
                 foreach (var gc in cmp.Gear) if (gc.Kind == StageCompare.ChangeKind.Removed) rmGear++;
                 float rightH = lh + lh * Mathf.Max(curSkills + rmSkills, 1)
-                    + lh * 0.4f + lh + lh * 1.4f * Mathf.Max(curGear + rmGear, 1);
+                    + lh * 0.5f + lh + lh * 1.4f * Mathf.Max(curGear + rmGear, 1) + lh;
                 float detailH = Mathf.Max(leftH, rightH);
                 float h = Pad + lh /*header*/ + lh /*stage nav*/ + chartH + 18 + lh /*run nav*/ + (hasTabs ? lh : 0) + detailH + Pad;
                 _rect.height = h;
@@ -357,12 +357,7 @@ namespace TbhDpsMeter
                 {
                     ly += lh * 0.5f;
                     foreach (var st in cmp.Stats)
-                    {
-                        bool better = st.Current >= st.Baseline;
-                        string col = Mathf.Approximately((float)st.Delta, 0f) ? "#8a93a0" : (better ? "#5fd07c" : "#ef6a5a");
-                        GUI.Label(new Rect(lx, ly, leftColW, lh), $"<color=#aeb6c2>{Loc.G(st.Key)}</color> {FmtStat(st.Baseline)} → <color={col}>{FmtStat(st.Current)}</color>", _label);
-                        ly += lh;
-                    }
+                        ly = Row2(ly, subW, lx, rxc, Loc.G(st.Key), FmtStat(st.Baseline), FmtStat(st.Current), DeltaColor(st.Baseline, st.Current, true));
                 }
                 GUI.Label(new Rect(lx, ly, leftColW, lh), Loc.G("dmg_dist"), _dim); ly += lh;
                 DrawDist(lx + 34, ly, leftColW - 34, 11, baseline);
@@ -379,13 +374,11 @@ namespace TbhDpsMeter
                     GUI.Label(new Rect(lx, ly, leftColW, lh), $"<color=#{ColorHex(d.flag)}>■</color> {nm} {d.bas * 100f:0.#}% → <color={col}>{d.cur * 100f:0.#}%</color>", _label);
                     ly += lh;
                 }
-                GUI.Label(new Rect(lx, ly, leftColW, lh), Loc.G("per_wave"), _dim); ly += lh;
+                GUI.Label(new Rect(lx, ly, leftColW, lh), $"{Loc.G("per_wave")}", _dim); ly += lh;
                 for (int i = 0; i < waveRows; i++)
                 {
                     var wd = cmp.Waves[i];
-                    string col = Mathf.Approximately(wd.Delta, 0f) ? "#8a93a0" : (wd.Delta < 0 ? "#5fd07c" : "#ef6a5a");
-                    GUI.Label(new Rect(lx, ly, leftColW, lh), $"<color=#aeb6c2>{Loc.G("wave_short")}{wd.Wave}</color> {wd.Baseline:0.0}→{wd.Current:0.0}s <color={col}>{(wd.Delta >= 0 ? "+" : "")}{wd.Delta:0.0}</color>", _label);
-                    ly += lh;
+                    ly = Row2(ly, subW, lx, rxc, $"{Loc.G("wave_short")}{wd.Wave}", $"{wd.Baseline:0.0}s", $"{wd.Current:0.0}s", DeltaColor(wd.Baseline, wd.Current, false));
                 }
 
                 // RIGHT column: FULL loadout of the selected character, with change markers vs baseline
@@ -448,6 +441,22 @@ namespace TbhDpsMeter
                 var p = Vector2.Lerp(a, b, i / (float)steps);
                 DrawRect(p.x - 1, p.y - 1, 2, 2, c);
             }
+        }
+
+        /// <summary>One aligned row: "label baseStr" in the baseline column, colored curStr in the "this" column.</summary>
+        private float Row2(float y, float subW, float lx, float rxc, string label, string baseStr, string curStr, string curColor)
+        {
+            int fs = Plugin.FontSize.Value; float lh = fs + 7;
+            GUI.Label(new Rect(lx, y, subW, lh), $"<color=#aeb6c2>{label}</color> {baseStr}", _label);
+            GUI.Label(new Rect(rxc + 4, y, subW, lh), $"<color={curColor}>{curStr}</color>", _col);
+            return y + lh;
+        }
+
+        private static string DeltaColor(double b, double c, bool higherBetter)
+        {
+            if (System.Math.Abs(c - b) < 1e-6) return "#ffffff";
+            bool better = higherBetter ? c > b : c < b;
+            return better ? "#5fd07c" : "#ef6a5a";
         }
 
         private float CoreRow(float cy, float colW, float lx, float rx, string labelKey, StageCompare.CompareResult cmp, string metricKey, bool higherBetter, bool seconds, bool pct = false)
@@ -527,41 +536,55 @@ namespace TbhDpsMeter
         {
             var cur = cmp.CurrentSnap;
             var bas = cmp.BaselineSnap;
+            float nameW = w * 0.52f;
+            float valW = (w - nameW) / 2f;
+            float baseX = x + nameW, curX = x + nameW + valW;
 
-            // ---- skills ----
-            GUI.Label(new Rect(x, y, w, lh), Loc.G("skill_changes"), _dim); y += lh;
+            // ---- skills (name | 基準Lv | 這場Lv) ----
+            GUI.Label(new Rect(x, y, nameW, lh), Loc.G("skill_changes"), _dim);
+            GUI.Label(new Rect(baseX, y, valW, lh), $"<size=10><color=#9fb4cc>{Loc.G("baseline")}</color></size>", _dim);
+            GUI.Label(new Rect(curX, y, valW, lh), $"<size=10><color=#9fb4cc>{Loc.G("this_run")}</color></size>", _dim);
+            y += lh;
             var baseSkill = new Dictionary<string, SkillEntry>();
             if (bas != null) foreach (var s in bas.Skills) baseSkill[s.Key != 0 ? "k" + s.Key : s.Name] = s;
-            if (cur == null || cur.Skills.Count == 0) { GUI.Label(new Rect(x, y, w, lh), "<color=#8a93a0>—</color>", _tiny); y += lh; }
-            else foreach (var s in cur.Skills)
+            var ids = new List<string>(); var seen = new HashSet<string>();
+            if (cur != null) foreach (var s in cur.Skills) if (seen.Add(s.Key != 0 ? "k" + s.Key : s.Name)) ids.Add(s.Key != 0 ? "k" + s.Key : s.Name);
+            if (bas != null) foreach (var s in bas.Skills) { string id = s.Key != 0 ? "k" + s.Key : s.Name; if (seen.Add(id)) ids.Add(id); }
+            if (ids.Count == 0) { GUI.Label(new Rect(x, y, w, lh), "<color=#8a93a0>—</color>", _tiny); y += lh; }
+            foreach (var id in ids)
             {
-                string id = s.Key != 0 ? "k" + s.Key : s.Name;
-                bool inBase = baseSkill.TryGetValue(id, out var b);
-                string txt, mark;
-                if (!inBase) { mark = "<color=#5fd07c>＋</color>"; txt = $"{s.Name} {Loc.G("lv")}{s.Level}"; }
-                else if (b.Level != s.Level) { mark = "<color=#e7c25a>~</color>"; txt = $"{s.Name} {Loc.G("lv")}<color=#e7c25a>{b.Level}→{s.Level}</color>"; }
-                else { mark = "<color=#8a93a0>·</color>"; txt = $"{s.Name} {Loc.G("lv")}{s.Level}"; }
-                GUI.Label(new Rect(x, y, w, lh), $"{mark} {txt}", _tiny); y += lh;
+                bool hb = baseSkill.TryGetValue(id, out var b);
+                SkillEntry c = default; bool hc = false;
+                if (cur != null) foreach (var s in cur.Skills) if ((s.Key != 0 ? "k" + s.Key : s.Name) == id) { c = s; hc = true; break; }
+                string name = hc ? c.Name : b.Name;
+                string baseStr = hb ? Loc.G("lv") + b.Level : "—";
+                string curStr = hc ? Loc.G("lv") + c.Level : "—";
+                string col = !hb ? "#5fd07c" : (!hc ? "#ef6a5a" : (b.Level != c.Level ? "#e7c25a" : "#dfe4ec"));
+                GUI.Label(new Rect(x, y, nameW, lh), $"<color=#cdd5df>{name}</color>", _tiny);
+                GUI.Label(new Rect(baseX, y, valW, lh), $"<color=#8a93a0>{baseStr}</color>", _tiny);
+                GUI.Label(new Rect(curX, y, valW, lh), $"<color={col}>{curStr}</color>", _tiny);
+                y += lh;
             }
-            // removed skills
-            if (cur != null) { var curIds = new HashSet<string>(); foreach (var s in cur.Skills) curIds.Add(s.Key != 0 ? "k" + s.Key : s.Name);
-                if (bas != null) foreach (var s in bas.Skills) if (!curIds.Contains(s.Key != 0 ? "k" + s.Key : s.Name)) { GUI.Label(new Rect(x, y, w, lh), $"<color=#ef6a5a>− {s.Name} {Loc.G("lv")}{s.Level}</color>", _tiny); y += lh; } }
 
-            y += lh * 0.4f;
-            // ---- gear ----
+            y += lh * 0.5f;
+            // ---- gear (current item per slot; colour vs baseline) ----
             GUI.Label(new Rect(x, y, w, lh), Loc.G("gear_changes"), _dim); y += lh;
             var baseGear = new Dictionary<string, GearItem>();
             if (bas != null) foreach (var g in bas.Equipment) baseGear[string.IsNullOrEmpty(g.Slot) ? g.Name : g.Slot] = g;
-            if (cur == null || cur.Equipment.Count == 0) { GUI.Label(new Rect(x, y, w, lh), "<color=#8a93a0>—</color>", _tiny); y += lh; }
-            else foreach (var g in cur.Equipment)
+            bool any = false;
+            if (cur != null) foreach (var g in cur.Equipment)
             {
+                any = true;
                 string id = string.IsNullOrEmpty(g.Slot) ? g.Name : g.Slot;
-                bool inBase = baseGear.TryGetValue(id, out var b);
-                string mark = !inBase ? "<color=#5fd07c>＋</color>" : (!GearSame(b, g) ? "<color=#e7c25a>~</color>" : "<color=#8a93a0>·</color>");
-                GUI.Label(new Rect(x, y, w, lh * 1.4f), $"{mark} {GearStr(g)}", _tiny); y += lh * 1.4f;
+                bool hb = baseGear.TryGetValue(id, out var b);
+                string col = !hb ? "#5fd07c" : (!GearSame(b, g) ? "#e7c25a" : "#cdd5df");
+                string was = (hb && !GearSame(b, g)) ? $"  <size=10><color=#8a93a0>({Loc.G("baseline")}: {b.Name})</color></size>" : "";
+                GUI.Label(new Rect(x, y, w, lh * 1.4f), $"<color={col}>{GearStr(g)}</color>{was}", _tiny); y += lh * 1.4f;
             }
+            // removed gear
             if (cur != null) { var curIds = new HashSet<string>(); foreach (var g in cur.Equipment) curIds.Add(string.IsNullOrEmpty(g.Slot) ? g.Name : g.Slot);
-                if (bas != null) foreach (var g in bas.Equipment) if (!curIds.Contains(string.IsNullOrEmpty(g.Slot) ? g.Name : g.Slot)) { GUI.Label(new Rect(x, y, w, lh * 1.4f), $"<color=#ef6a5a>− {GearStr(g)}</color>", _tiny); y += lh * 1.4f; } }
+                if (bas != null) foreach (var g in bas.Equipment) if (!curIds.Contains(string.IsNullOrEmpty(g.Slot) ? g.Name : g.Slot)) { any = true; GUI.Label(new Rect(x, y, w, lh * 1.4f), $"<color=#ef6a5a>− {GearStr(g)}</color>", _tiny); y += lh * 1.4f; } }
+            if (!any) { GUI.Label(new Rect(x, y, w, lh), "<color=#8a93a0>—</color>", _tiny); y += lh; }
             return y;
         }
 
