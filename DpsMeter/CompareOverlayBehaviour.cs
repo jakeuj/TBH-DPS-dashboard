@@ -143,6 +143,31 @@ namespace TbhDpsMeter
             }
         }
 
+        /// <summary>Localize the difficulty suffix of a stage id ("2-2 HELL" -> "2-2 地獄").</summary>
+        private static string LocalizeStage(string stage)
+        {
+            if (string.IsNullOrEmpty(stage)) return Loc.G("uncategorized");
+            int sp = stage.LastIndexOf(' ');
+            if (sp > 0)
+            {
+                string diff = stage.Substring(sp + 1);
+                string loc = Loc.G(diff);
+                if (loc != diff) return stage.Substring(0, sp) + " " + loc;
+            }
+            return stage;
+        }
+
+        /// <summary>Display name for a character id, looked up from either run's party.</summary>
+        private static string CharName(RunRecord a, RunRecord b, string id)
+        {
+            foreach (var r in new[] { a, b })
+                if (r != null)
+                    foreach (var s in r.Party)
+                        if (s != null && s.Character == id && !string.IsNullOrEmpty(s.CharacterName))
+                            return s.CharacterName;
+            return string.IsNullOrEmpty(id) ? "?" : id;
+        }
+
         private void TogglePin()
         {
             var g = CurrentGroup();
@@ -162,7 +187,7 @@ namespace TbhDpsMeter
             if (_bgTex == null || !Mathf.Approximately(_bgAlphaBaked, _opacity))
             {
                 if (_bgTex == null) _bgTex = new Texture2D(1, 1);
-                _bgTex.SetPixel(0, 0, new Color(0.04f, 0.05f, 0.08f, _opacity));
+                _bgTex.SetPixel(0, 0, new Color(0f, 0f, 0f, 1f));   // solid black, no transparency
                 _bgTex.Apply();
                 _bgAlphaBaked = _opacity;
                 if (_box != null) _box.normal.background = _bgTex;
@@ -254,7 +279,7 @@ namespace TbhDpsMeter
                 _handleRect = new Rect(x, _rect.y, w, lh);
 
                 // header: title + close
-                string sid = string.IsNullOrEmpty(stage) ? Loc.G("uncategorized") : stage;
+                string sid = LocalizeStage(stage);
                 GUI.Label(new Rect(ix, cy, iw - 56, lh), $"{Loc.G("compare_title")} <color=#7FB2FF>{sid}</color>", _title);
                 _backRect = new Rect(x + w - 52, cy - 2, 22, lh);
                 GUI.Button(_backRect, "≡", _btn);
@@ -289,7 +314,7 @@ namespace TbhDpsMeter
                     {
                         var tr = new Rect(tx, cy, tw - 2, lh - 1);
                         _charTabs.Add(tr);
-                        string label = Loc.Name(string.IsNullOrEmpty(chars[i]) ? "?" : chars[i]);
+                        string label = CharName(baseline, current, chars[i]);
                         bool sel = i == _charIndex;
                         GUI.Label(tr, sel ? $"<b><color=#FFC857>[{label}]</color></b>" : $"<color=#9fb4cc>{label}</color>", _dim);
                         tx += tw;
@@ -387,7 +412,7 @@ namespace TbhDpsMeter
             _handleRect = new Rect(x, _rect.y, w, lh);
 
             float cy = _rect.y + Pad;
-            string sid = string.IsNullOrEmpty(stage) ? Loc.G("uncategorized") : stage;
+            string sid = LocalizeStage(stage);
             GUI.Label(new Rect(ix, cy, iw - 28, lh), $"{Loc.G("compare_title")} <color=#7FB2FF>{sid}</color>  <size=11>{Loc.G("trend")}</size>", _title);
             _closeRect = new Rect(x + w - 26, cy - 2, 22, lh);
             GUI.Button(_closeRect, "✕", _btn);

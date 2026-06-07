@@ -54,7 +54,7 @@ namespace TbhDpsMeter
             try
             {
                 if (diag) HeroProbe.Diagnose(hero);
-                snap.Character = HeroProbe.ReadCharacterId(hero);
+                HeroProbe.ReadIdentity(hero, snap);
                 HeroProbe.ReadStats(hero, snap);
                 HeroProbe.ReadGear(hero, snap);
                 HeroProbe.ReadSkills(hero, snap);

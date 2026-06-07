@@ -47,8 +47,10 @@ namespace TbhDpsMeter
     {
         /// <summary>True if a capture was attempted and at least some data was read.</summary>
         public bool Captured;
-        /// <summary>Stable per-character identity (class key / hero id) used to match across runs. "" = unknown.</summary>
+        /// <summary>Stable per-character identity (HeroKey) used to match across runs. "" = unknown.</summary>
         public string Character = "";
+        /// <summary>Localized display name (class/hero name) for the character tab. Falls back to Character.</summary>
+        public string CharacterName = "";
         public readonly List<StatEntry> Stats = new List<StatEntry>();
         public readonly List<GearItem> Equipment = new List<GearItem>();
         public readonly List<SkillEntry> Skills = new List<SkillEntry>();

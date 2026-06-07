@@ -85,6 +85,11 @@ namespace TbhDpsMeter
             { "trend",          new[] { "通關秒數趨勢", "Clear-time trend", "クリア秒数推移", "通关秒数趋势", "Tendencia" } },
             { "runs",           new[] { "場", "runs", "回", "场", "part." } },
             { "chart_hint",     new[] { "點某點看該場詳細比較", "click a point for details", "点で詳細比較", "点击查看详细", "click un punto" } },
+            // stage difficulty (ESTAGEDIFFICULTY)
+            { "NORMAL",         new[] { "普通", "Normal", "ノーマル", "普通", "Normal" } },
+            { "NIGHTMARE",      new[] { "惡夢", "Nightmare", "ナイトメア", "恶梦", "Pesadilla" } },
+            { "HELL",           new[] { "地獄", "Hell", "ヘル", "地狱", "Infierno" } },
+            { "TORMENT",        new[] { "折磨", "Torment", "トーメント", "折磨", "Tormento" } },
             // common stat keys (StatType names from RE; unknown keys fall back to the raw name)
             { "attack",         new[] { "攻擊", "Attack", "攻撃", "攻击", "Ataque" } },
             { "aspd",           new[] { "攻速", "AtkSpd", "攻速", "攻速", "Vel.Atq" } },

@@ -206,7 +206,10 @@ namespace TbhDpsMeter
                 var act = Refl.Get(info, "Act");
                 var no = Refl.Get(info, "StageNo");
                 if (act == null || no == null) return "";
-                return $"{Refl.ToI(act)}-{Refl.ToI(no)}";
+                string id = $"{Refl.ToI(act)}-{Refl.ToI(no)}";
+                string diff = Refl.Str(Refl.Get(info, "STAGEDIFFICULTY"));   // NORMAL/NIGHTMARE/HELL/TORMENT
+                if (!string.IsNullOrEmpty(diff)) id += " " + diff;
+                return id;
             }
             catch { return ""; }
         }
@@ -361,27 +364,37 @@ namespace TbhDpsMeter
             return list;
         }
 
-        // candidate accessors for a stable per-character class/id (refined via RE + in-game)
-        private static readonly string[] ClassMembers = { "befr" };
+        /// <summary>Resolve a localization key to the in-game display string via the game's
+        /// Unity-Localization facade (nm.gbs). Falls back to the key if unavailable.</summary>
+        public static string GameLoc(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return key;
+            try
+            {
+                string s = Refl.Str(Refl.CallStatic("nm", "gbs", key));
+                if (!string.IsNullOrEmpty(s)) return s;
+            }
+            catch { }
+            return key;
+        }
 
-        /// <summary>Stable per-character id for matching across runs (class key / hero id).
-        /// Best-effort until the exact obfuscated member is confirmed in-game.</summary>
-        public static string ReadCharacterId(Hero hero)
+        /// <summary>Fill the character's stable id (HeroInfoData.HeroKey) and localized display name
+        /// (nm.gbs(HeroNameKey), falling back to the class enum).</summary>
+        public static void ReadIdentity(Hero hero, CharacterSnapshot snap)
         {
             try
             {
                 var cache = Refl.Get(hero, "cache");
-                // ug.befr -> HeroInfoData; look for a class/character key on it
-                var info = Refl.Get(cache, "befr");
-                foreach (var k in new[] { "ClassKey", "HeroKey", "CharacterKey", "NameKey", "JOB", "CLASS" })
-                {
-                    var v = Refl.Get(info, k);
-                    string s = Refl.Str(v);
-                    if (!string.IsNullOrEmpty(s) && s != "0") return s;
-                }
+                var info = Refl.Get(cache, "befr");               // HeroInfoData
+                int heroKey = Refl.ToI(Refl.Get(info, "HeroKey"));
+                snap.Character = heroKey != 0 ? heroKey.ToString() : Refl.Str(Refl.Get(info, "ClassType"));
+                string nameKey = Refl.Str(Refl.Get(info, "HeroNameKey"));
+                string name = GameLoc(nameKey);
+                if (string.IsNullOrEmpty(name) || name == nameKey)
+                    name = Refl.Str(Refl.Get(info, "ClassType"));  // e.g. "Priest"/"Hunter"
+                snap.CharacterName = name;
             }
-            catch { }
-            return "";
+            catch (Exception e) { Plugin.Logger?.LogWarning("ReadIdentity: " + e.Message); }
         }
 
         public static void ReadStats(Hero hero, CharacterSnapshot snap)
@@ -457,9 +470,11 @@ namespace TbhDpsMeter
 
                         var g = new GearItem();
                         var info = Refl.Get(item, "brke");          // ItemInfoData
-                        g.Name = Refl.Str(Refl.Get(info, "NameKey"));
+                        string nameKey = Refl.Str(Refl.Get(info, "NameKey"));
+                        g.Name = GameLoc(nameKey);
                         g.Slot = Refl.Str(Refl.Call(item, "ips"));  // EGearType
-                        if (string.IsNullOrEmpty(g.Name)) g.Name = "item" + Refl.ToI(Refl.Get(info, "ItemKey"));
+                        if (string.IsNullOrEmpty(g.Name) || g.Name == nameKey)
+                            g.Name = string.IsNullOrEmpty(nameKey) ? "item" + Refl.ToI(Refl.Get(info, "ItemKey")) : nameKey;
 
                         foreach (var slot in GearModSlots)
                         {
@@ -499,8 +514,9 @@ namespace TbhDpsMeter
                         int key = Refl.ToI(Refl.Get(info, "SkillKey"));
                         if (key == 0) continue;                      // skip empty/template slots
                         if (!seen.Add(key)) continue;                // de-dup across sources
-                        string name = Refl.Str(Refl.Get(info, "SkillNameKey"));
-                        if (string.IsNullOrEmpty(name)) name = "skill" + key;
+                        string nameKey = Refl.Str(Refl.Get(info, "SkillNameKey"));
+                        string name = GameLoc(nameKey);
+                        if (string.IsNullOrEmpty(name) || name == nameKey) name = string.IsNullOrEmpty(nameKey) ? "skill" + key : nameKey;
                         snap.Skills.Add(new SkillEntry(name, ReadSkillLevel(sk, cache)));
                     }
                     catch { }

@@ -66,7 +66,7 @@ namespace TbhDpsMeter
             foreach (var snap in r.Party)
             {
                 if (snap == null || (!snap.Captured && !snap.HasAny)) continue;
-                sb.Append("char=").Append(Clean(snap.Character)).Append('\n');
+                sb.Append("char=").Append(Clean(snap.Character)).Append(FS).Append(Clean(snap.CharacterName)).Append('\n');
                 foreach (var st in snap.Stats)
                     sb.Append("stat=").Append(Clean(st.Key)).Append(':').Append(st.Value.ToString(Inv)).Append('\n');
                 foreach (var g in snap.Equipment)
@@ -92,7 +92,14 @@ namespace TbhDpsMeter
                 if (snap == null) { snap = new CharacterSnapshot { Captured = true }; r.Party.Add(snap); }
                 return snap;
             }
-            void NewChar(string id) { snap = new CharacterSnapshot { Captured = true, Character = id }; r.Party.Add(snap); }
+            void NewChar(string v)
+            {
+                int tab = v.IndexOf(FS);
+                string id = tab >= 0 ? v.Substring(0, tab) : v;
+                string name = tab >= 0 ? v.Substring(tab + 1) : "";
+                snap = new CharacterSnapshot { Captured = true, Character = id, CharacterName = name };
+                r.Party.Add(snap);
+            }
 
             foreach (var raw in lines)
             {
