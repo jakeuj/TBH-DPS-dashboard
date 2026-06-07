@@ -134,7 +134,7 @@ namespace TbhDpsMeter
             if (_bgTex == null || !Mathf.Approximately(_bgAlphaBaked, _opacity))
             {
                 if (_bgTex == null) _bgTex = new Texture2D(1, 1);
-                _bgTex.SetPixel(0, 0, new Color(0.08f, 0.04f, 0.05f, _opacity));   // faint red-tinted bg
+                _bgTex.SetPixel(0, 0, new Color(0f, 0f, 0f, 1f));   // solid black, no transparency
                 _bgTex.Apply();
                 _bgAlphaBaked = _opacity;
                 if (_box != null) _box.normal.background = _bgTex;
@@ -266,7 +266,7 @@ namespace TbhDpsMeter
         /// <summary>Draws a stacked bar + a 2-column legend; returns the new cursor Y.</summary>
         private float DrawDistribution(float x, float y, float w, float h, List<DamageTakenTracker.Part> parts, double total, float lh, bool isAttribute)
         {
-            DrawRect(x, y, w, h, new Color(0f, 0f, 0f, 0.35f));
+            DrawRect(x, y, w, h, new Color(0f, 0f, 0f, 1f));
             if (parts == null || parts.Count == 0 || total <= 0) return y + h;
 
             float cx = x;

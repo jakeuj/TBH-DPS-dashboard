@@ -96,6 +96,8 @@ namespace TbhDpsMeter
             { "critrate",       new[] { "暴擊率", "CritRate", "会心率", "暴击率", "Crít%" } },
             { "critdmg",        new[] { "暴傷", "CritDmg", "会心ダメ", "暴伤", "DañoCr" } },
             { "hp",             new[] { "生命", "HP", "HP", "生命", "Vida" } },
+            { "armor",          new[] { "護甲", "Armor", "防御", "护甲", "Armadura" } },
+            { "mspd",           new[] { "移速", "MoveSpd", "移動速度", "移速", "Vel.mov" } },
             // damage types (EDamageType)
             { "Melee",          new[] { "近戰", "Melee", "近接", "近战", "Melé" } },
             { "Projectile",     new[] { "投射", "Projectile", "投射", "投射", "Proyectil" } },

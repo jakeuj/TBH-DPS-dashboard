@@ -30,9 +30,7 @@ namespace TbhDpsMeter
         private readonly List<Rect> _charTabs = new List<Rect>();
         private int _charIndex;
 
-        // chart (dashboard) mode: a clear-time trend line; click a point to compare that run
-        private bool _chartMode = true;
-        private Rect _backRect;
+        // chart points (clear-time trend): click a point to select that run for the detail below
         private readonly List<Rect> _pointRects = new List<Rect>();
         private readonly List<int> _pointRun = new List<int>();
 
@@ -46,7 +44,7 @@ namespace TbhDpsMeter
         void Awake()
         {
             _opacity = Mathf.Clamp01(Plugin.Opacity.Value + 0.15f);
-            _rect.width = Mathf.Max(320, Plugin.ComparePanelWidth.Value);
+            _rect.width = Mathf.Max(520, Plugin.ComparePanelWidth.Value);   // two-column layout needs width
             _visible = Plugin.CompareStartVisible.Value;
         }
 
@@ -115,15 +113,9 @@ namespace TbhDpsMeter
                 if (_closeRect.Contains(m)) { _visible = false; return; }
                 if (_stagePrev.Contains(m)) { _stageIndex--; if (_stageIndex < 0) _stageIndex = Mathf.Max(0, _stages.Count - 1); _runIndex = CurrentGroup().Count - 1; return; }
                 if (_stageNext.Contains(m)) { _stageIndex++; if (_stageIndex >= _stages.Count) _stageIndex = 0; _runIndex = CurrentGroup().Count - 1; return; }
-                // chart mode: click a point to drill into the detailed compare for that run
-                if (_chartMode)
-                {
-                    for (int i = 0; i < _pointRects.Count; i++)
-                        if (_pointRects[i].Contains(m)) { _runIndex = _pointRun[i]; _chartMode = false; return; }
-                    if (_rect.Contains(m)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
-                    return;
-                }
-                if (_backRect.Contains(m)) { _chartMode = true; return; }
+                // chart points are always shown on top: clicking one selects that run for the detail below
+                for (int i = 0; i < _pointRects.Count; i++)
+                    if (_pointRects[i].Contains(m)) { _runIndex = _pointRun[i]; return; }
                 if (_runPrev.Contains(m)) { _runIndex = Mathf.Max(0, _runIndex - 1); return; }
                 if (_runNext.Contains(m)) { _runIndex = Mathf.Min(CurrentGroup().Count - 1, _runIndex + 1); return; }
                 if (_pinRect.Contains(m)) { TogglePin(); return; }
@@ -237,9 +229,6 @@ namespace TbhDpsMeter
                 string stage = _stages[_stageIndex];
                 _pinned.TryGetValue(stage, out var pinTitle);
                 var baseline = StageCompare.PickBaseline(group, pinTitle);
-
-                if (_chartMode) { DrawChart(group, baseline, stage, ix, iw, lh, fs); return; }
-
                 var current = group[_runIndex];
                 var chars = StageCompare.PartyCharacters(baseline, current);
                 if (chars.Count == 0) chars.Add("");
@@ -249,27 +238,23 @@ namespace TbhDpsMeter
                 bool curPinned = pinTitle != null && current.Title == pinTitle;
                 bool hasTabs = chars.Count > 1;
 
-                // ---- measure height ----
+                // ---- measure ----
                 int statRows = cmp.Stats.Count;
                 int waveRows = Mathf.Min(cmp.Waves.Count, 8);
                 int gearRows = cmp.Gear.Count;
                 int skillRows = cmp.Skills.Count;
-                float coreRows = 6f; // duration, active, idle, avg, peak, crit
+                float coreRows = 6f;
                 var dist = MergedShares(baseline, current);
                 int distRows = Mathf.Min(dist.Count, 4);
-                float h = Pad
-                    + lh                               // header
-                    + lh                               // stage nav
-                    + lh                               // run nav + pin
-                    + (hasTabs ? lh : 0)               // character tabs
-                    + lh * coreRows                    // two-col core
+                float chartH = 120f;
+                float leftH = lh + lh * coreRows
                     + (statRows > 0 ? lh * 0.5f + lh * statRows : 0)
-                    + lh + 14 + 14                     // dist header + 2 bars
-                    + lh * distRows                    // dist % legend
-                    + lh + lh * waveRows               // wave header + rows
-                    + (gearRows > 0 ? lh + lh * 1.4f * gearRows : lh)
-                    + (skillRows > 0 ? lh + lh * 1.4f * skillRows : 0)
-                    + Pad;
+                    + lh + 14 + 14 + lh * distRows
+                    + lh + lh * waveRows;
+                float rightH = lh + lh * 1.4f * Mathf.Max(gearRows, 1)
+                    + (skillRows > 0 ? lh + lh * 1.4f * skillRows : 0);
+                float detailH = Mathf.Max(leftH, rightH);
+                float h = Pad + lh /*header*/ + lh /*stage nav*/ + chartH + 18 + lh /*run nav*/ + (hasTabs ? lh : 0) + detailH + Pad;
                 _rect.height = h;
                 _rect.x = Mathf.Clamp(_rect.x, 0f, Mathf.Max(0f, Screen.width - _rect.width));
                 _rect.y = Mathf.Clamp(_rect.y, 0f, Mathf.Max(0f, Screen.height - _rect.height));
@@ -278,34 +263,36 @@ namespace TbhDpsMeter
                 float cy = _rect.y + Pad;
                 _handleRect = new Rect(x, _rect.y, w, lh);
 
-                // header: title + close
+                // header
                 string sid = LocalizeStage(stage);
-                GUI.Label(new Rect(ix, cy, iw - 56, lh), $"{Loc.G("compare_title")} <color=#7FB2FF>{sid}</color>", _title);
-                _backRect = new Rect(x + w - 52, cy - 2, 22, lh);
-                GUI.Button(_backRect, "≡", _btn);
+                GUI.Label(new Rect(ix, cy, iw - 28, lh), $"{Loc.G("compare_title")} <color=#7FB2FF>{sid}</color>", _title);
                 _closeRect = new Rect(x + w - 26, cy - 2, 22, lh);
                 GUI.Button(_closeRect, "✕", _btn);
                 cy += lh;
 
-                // stage nav
+                // stage nav + chart hint
                 _stagePrev = new Rect(ix, cy, 26, lh - 2);
                 _stageNext = new Rect(ix + 30, cy, 26, lh - 2);
                 GUI.Button(_stagePrev, "≪", _btn);
                 GUI.Button(_stageNext, "≫", _btn);
-                GUI.Label(new Rect(ix + 62, cy, iw - 62, lh), $"<size=11>{Loc.G("compare_title")} {_stageIndex + 1}/{_stages.Count}</size>", _dim);
+                GUI.Label(new Rect(ix + 62, cy, iw - 62, lh), $"<size=11>{_stageIndex + 1}/{_stages.Count}　{group.Count} {Loc.G("runs")}　<color=#FFC857>◆</color>{Loc.G("baseline")}　{Loc.G("chart_hint")}</size>", _dim);
                 cy += lh;
+
+                // ---- chart (always on top) ----
+                DrawChartSection(group, baseline, ix, cy, iw, chartH);
+                cy += chartH + 18;
 
                 // run nav + pin
                 _runPrev = new Rect(ix, cy, 26, lh - 2);
                 _runNext = new Rect(ix + 30, cy, 26, lh - 2);
                 GUI.Button(_runPrev, "◀", _btn);
                 GUI.Button(_runNext, "▶", _btn);
-                GUI.Label(new Rect(ix + 62, cy, iw - 130, lh), $"<size=11>{current.Title}  {_runIndex + 1}/{group.Count}</size>", _dim);
+                GUI.Label(new Rect(ix + 62, cy, iw - 200, lh), $"<size=11>{current.Title}  {_runIndex + 1}/{group.Count}</size>", _dim);
                 _pinRect = new Rect(x + w - Pad - 64, cy - 1, 64, lh);
                 GUI.Button(_pinRect, curPinned ? "📌" + Loc.G("pinned") : Loc.G("set_baseline"), _btn);
                 cy += lh;
 
-                // ---- character tabs (whole party) ----
+                // character tabs
                 _charTabs.Clear();
                 if (hasTabs)
                 {
@@ -322,77 +309,71 @@ namespace TbhDpsMeter
                     cy += lh;
                 }
 
-                // ---- two-column core ----
-                float colW = iw / 2f;
-                float lx = ix, rx = ix + colW;
-                DrawRect(rx - 1, cy, 1, lh * coreRows, new Color(1, 1, 1, 0.10f));
-                GUI.Label(new Rect(lx, cy, colW, lh), $"<size=11><color=#9fb4cc>📌 {Loc.G("baseline")}</color></size>", _dim);
-                GUI.Label(new Rect(rx + 6, cy, colW, lh), curIsBase ? $"<size=11><color=#9fb4cc>{Loc.G("baseline")}</color></size>" : $"<size=11><color=#9fb4cc>{Loc.G("this_run")}</color></size>", _dim);
-                cy += lh;
+                // ---- two big columns: LEFT = numbers, RIGHT = gear/skill ----
+                float gap = 12f;
+                float leftColW = iw * 0.54f;
+                float rightColX = ix + leftColW + gap;
+                float rightColW = iw - leftColW - gap;
+                DrawRect(rightColX - gap * 0.5f, cy, 1, detailH, new Color(1, 1, 1, 0.10f));
 
-                cy = CoreRow(cy, colW, lx, rx, "total_time", cmp, "duration", false, true);
-                cy = CoreRow(cy, colW, lx, rx, "active_time", cmp, "active", true, true);
-                cy = CoreRow(cy, colW, lx, rx, "idle_time", cmp, "idle", false, true);
-                cy = CoreRow(cy, colW, lx, rx, "avg", cmp, "avg", true, false);
-                cy = CoreRow(cy, colW, lx, rx, "peak", cmp, "peak", true, false);
-                cy = CoreRow(cy, colW, lx, rx, "crit", cmp, "crit", true, false, pct: true);
-
-                // ---- stat changes ----
+                // LEFT column
+                float ly = cy, lx = ix;
+                float subW = leftColW / 2f;
+                float rxc = ix + subW;
+                GUI.Label(new Rect(lx, ly, subW, lh), $"<size=11><color=#9fb4cc>📌 {Loc.G("baseline")}</color></size>", _dim);
+                GUI.Label(new Rect(rxc + 4, ly, subW, lh), curIsBase ? $"<size=11><color=#9fb4cc>{Loc.G("baseline")}</color></size>" : $"<size=11><color=#9fb4cc>{Loc.G("this_run")}</color></size>", _dim);
+                ly += lh;
+                ly = CoreRow(ly, subW, lx, rxc, "total_time", cmp, "duration", false, true);
+                ly = CoreRow(ly, subW, lx, rxc, "active_time", cmp, "active", true, true);
+                ly = CoreRow(ly, subW, lx, rxc, "idle_time", cmp, "idle", false, true);
+                ly = CoreRow(ly, subW, lx, rxc, "avg", cmp, "avg", true, false);
+                ly = CoreRow(ly, subW, lx, rxc, "peak", cmp, "peak", true, false);
+                ly = CoreRow(ly, subW, lx, rxc, "crit", cmp, "crit", true, false, pct: true);
                 if (statRows > 0)
                 {
-                    cy += lh * 0.5f;
+                    ly += lh * 0.5f;
                     foreach (var st in cmp.Stats)
                     {
                         bool better = st.Current >= st.Baseline;
                         string col = Mathf.Approximately((float)st.Delta, 0f) ? "#8a93a0" : (better ? "#5fd07c" : "#ef6a5a");
-                        GUI.Label(new Rect(ix, cy, iw, lh),
-                            $"<color=#aeb6c2>{Loc.G(st.Key)}</color>  {FmtStat(st.Baseline)} → <color={col}>{FmtStat(st.Current)}</color>", _label);
-                        cy += lh;
+                        GUI.Label(new Rect(lx, ly, leftColW, lh), $"<color=#aeb6c2>{Loc.G(st.Key)}</color> {FmtStat(st.Baseline)} → <color={col}>{FmtStat(st.Current)}</color>", _label);
+                        ly += lh;
                     }
                 }
-
-                // ---- damage distribution ----
-                GUI.Label(new Rect(ix, cy, iw, lh), Loc.G("dmg_dist"), _dim); cy += lh;
-                DrawDist(ix + 36, cy, iw - 36, 11, baseline);
-                GUI.Label(new Rect(ix, cy - 1, 34, 12), $"<size=10>{Loc.G("baseline")}</size>", _tiny);
-                cy += 14;
-                DrawDist(ix + 36, cy, iw - 36, 11, current);
-                GUI.Label(new Rect(ix, cy - 1, 34, 12), $"<size=10>{Loc.G("this_run")}</size>", _tiny);
-                cy += 14;
-                // % legend: name baseline% -> this%
+                GUI.Label(new Rect(lx, ly, leftColW, lh), Loc.G("dmg_dist"), _dim); ly += lh;
+                DrawDist(lx + 34, ly, leftColW - 34, 11, baseline);
+                GUI.Label(new Rect(lx, ly - 1, 32, 12), $"<size=10>{Loc.G("baseline")}</size>", _tiny);
+                ly += 14;
+                DrawDist(lx + 34, ly, leftColW - 34, 11, current);
+                GUI.Label(new Rect(lx, ly - 1, 32, 12), $"<size=10>{Loc.G("this_run")}</size>", _tiny);
+                ly += 14;
                 for (int i = 0; i < distRows; i++)
                 {
                     var d = dist[i];
                     string col = Mathf.Abs(d.cur - d.bas) < 0.001f ? "#aeb6c2" : (d.cur > d.bas ? "#5fd07c" : "#ef6a5a");
                     string nm = Loc.Name(DpsTracker.DecodeName(d.flag));
-                    GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#{ColorHex(d.flag)}>■</color> {nm}  {d.bas * 100f:0.#}% → <color={col}>{d.cur * 100f:0.#}%</color>", _label);
-                    cy += lh;
+                    GUI.Label(new Rect(lx, ly, leftColW, lh), $"<color=#{ColorHex(d.flag)}>■</color> {nm} {d.bas * 100f:0.#}% → <color={col}>{d.cur * 100f:0.#}%</color>", _label);
+                    ly += lh;
                 }
-
-                // ---- per-wave ----
-                GUI.Label(new Rect(ix, cy, iw, lh), Loc.G("per_wave"), _dim); cy += lh;
+                GUI.Label(new Rect(lx, ly, leftColW, lh), Loc.G("per_wave"), _dim); ly += lh;
                 for (int i = 0; i < waveRows; i++)
                 {
                     var wd = cmp.Waves[i];
                     string col = Mathf.Approximately(wd.Delta, 0f) ? "#8a93a0" : (wd.Delta < 0 ? "#5fd07c" : "#ef6a5a");
-                    GUI.Label(new Rect(ix, cy, iw, lh),
-                        $"<color=#aeb6c2>{Loc.G("wave_short")}{wd.Wave}</color>  {wd.Baseline:0.0}s → {wd.Current:0.0}s  <color={col}>{(wd.Delta >= 0 ? "+" : "")}{wd.Delta:0.0}</color>", _label);
-                    cy += lh;
+                    GUI.Label(new Rect(lx, ly, leftColW, lh), $"<color=#aeb6c2>{Loc.G("wave_short")}{wd.Wave}</color> {wd.Baseline:0.0}→{wd.Current:0.0}s <color={col}>{(wd.Delta >= 0 ? "+" : "")}{wd.Delta:0.0}</color>", _label);
+                    ly += lh;
                 }
 
-                // ---- gear changes ----
-                GUI.Label(new Rect(ix, cy, iw, lh), Loc.G("gear_changes"), _dim); cy += lh;
-                if (cmp.Gear.Count == 0)
-                {
-                    // nothing
-                }
-                foreach (var gc in cmp.Gear) { DrawGearChange(ix, cy, iw, lh * 1.4f, gc); cy += lh * 1.4f; }
-
-                // ---- skill changes ----
+                // RIGHT column: gear + skill changes
+                float ry = cy;
+                GUI.Label(new Rect(rightColX, ry, rightColW, lh), Loc.G("gear_changes"), _dim); ry += lh;
+                if (cmp.Gear.Count == 0) { GUI.Label(new Rect(rightColX, ry, rightColW, lh), "<color=#8a93a0>—</color>", _tiny); ry += lh; }
+                foreach (var gc in cmp.Gear) { DrawGearChange(rightColX, ry, rightColW, lh * 1.4f, gc); ry += lh * 1.4f; }
                 if (cmp.Skills.Count > 0)
                 {
-                    GUI.Label(new Rect(ix, cy, iw, lh), Loc.G("skill_changes"), _dim); cy += lh;
-                    foreach (var sc in cmp.Skills) { DrawSkillChange(ix, cy, iw, lh * 1.4f, sc); cy += lh * 1.4f; }
+                    ry += lh * 0.3f;
+                    GUI.Label(new Rect(rightColX, ry, rightColW, lh), Loc.G("skill_changes"), _dim); ry += lh;
+                    foreach (var sc in cmp.Skills) { DrawSkillChange(rightColX, ry, rightColW, lh * 1.4f, sc); ry += lh * 1.4f; }
                 }
             }
             catch { }
@@ -400,35 +381,15 @@ namespace TbhDpsMeter
 
         /// <summary>Dashboard: clear-time trend line for the stage. X = attempt (oldest→newest),
         /// Y = clear seconds. Click a point to open the detailed compare for that run.</summary>
-        private void DrawChart(List<RunRecord> group, RunRecord baseline, string stage, float ix, float iw, float lh, int fs)
+        /// <summary>Draw the clear-time trend plot within [x,y,w,plotH]; registers clickable point rects.
+        /// Highlights the baseline point (gold) and the currently-selected run (white ring).</summary>
+        private void DrawChartSection(List<RunRecord> group, RunRecord baseline, float ix, float y, float iw, float plotH)
         {
-            float x = _rect.x, w = _rect.width;
-            float plotH = 150f;
-            float h = Pad + lh /*header*/ + lh /*stage nav*/ + 16 + plotH + 18 /*plot + labels*/ + lh /*hint*/ + Pad;
-            _rect.height = h;
-            _rect.x = Mathf.Clamp(_rect.x, 0f, Mathf.Max(0f, Screen.width - _rect.width));
-            _rect.y = Mathf.Clamp(_rect.y, 0f, Mathf.Max(0f, Screen.height - _rect.height));
-            GUI.Box(_rect, GUIContent.none, _box);
-            _handleRect = new Rect(x, _rect.y, w, lh);
-
-            float cy = _rect.y + Pad;
-            string sid = LocalizeStage(stage);
-            GUI.Label(new Rect(ix, cy, iw - 28, lh), $"{Loc.G("compare_title")} <color=#7FB2FF>{sid}</color>  <size=11>{Loc.G("trend")}</size>", _title);
-            _closeRect = new Rect(x + w - 26, cy - 2, 22, lh);
-            GUI.Button(_closeRect, "✕", _btn);
-            _backRect = new Rect(-10, -10, 1, 1);   // no-op in chart mode
-            cy += lh;
-
-            _stagePrev = new Rect(ix, cy, 26, lh - 2);
-            _stageNext = new Rect(ix + 30, cy, 26, lh - 2);
-            GUI.Button(_stagePrev, "≪", _btn);
-            GUI.Button(_stageNext, "≫", _btn);
-            GUI.Label(new Rect(ix + 62, cy, iw - 62, lh), $"<size=11>{_stageIndex + 1}/{_stages.Count}　{group.Count} {Loc.G("runs")}</size>", _dim);
-            cy += lh + 6;
-
-            // plot area
-            float px = ix + 28, pw = iw - 34, py = cy, ph = plotH;
+            float x = _rect.x;
+            float px = ix + 30, pw = iw - 36, py = y, ph = plotH;
             DrawRect(px, py, pw, ph, new Color(0f, 0f, 0f, 1f));
+            DrawRect(px, py, pw, 1, new Color(1, 1, 1, 0.12f));
+            DrawRect(px, py + ph - 1, pw, 1, new Color(1, 1, 1, 0.12f));
 
             _pointRects.Clear(); _pointRun.Clear();
             int n = group.Count;
@@ -437,35 +398,29 @@ namespace TbhDpsMeter
             if (minDur == float.MaxValue) minDur = 0f;
             float span = Mathf.Max(1f, maxDur - minDur);
 
-            // y gridlines (min / max)
-            DrawRect(px, py, pw, 1, new Color(1, 1, 1, 0.12f));
-            DrawRect(px, py + ph - 1, pw, 1, new Color(1, 1, 1, 0.12f));
-            GUI.Label(new Rect(x + 2, py - 6, 28, 14), $"<size=9>{maxDur:0}s</size>", _tiny);
-            GUI.Label(new Rect(x + 2, py + ph - 12, 28, 14), $"<size=9>{minDur:0}s</size>", _tiny);
+            GUI.Label(new Rect(x + 2, py - 6, 30, 14), $"<size=9>{maxDur:0}s</size>", _tiny);
+            GUI.Label(new Rect(x + 2, py + ph - 12, 30, 14), $"<size=9>{minDur:0}s</size>", _tiny);
 
             float dx = n > 1 ? pw / (n - 1) : 0f;
             Vector2 prev = Vector2.zero;
             for (int i = 0; i < n; i++)
             {
                 var r = group[i];
-                float t = (r.Duration - minDur) / span;       // 0 = fastest (bottom-good)
+                float t = (r.Duration - minDur) / span;
                 float ptx = n > 1 ? px + dx * i : px + pw * 0.5f;
-                float pty = py + ph - 8 - t * (ph - 16);       // higher dur -> higher on screen
+                float pty = py + ph - 8 - t * (ph - 16);
                 if (i > 0) DrawLine(prev, new Vector2(ptx, pty), new Color(0.45f, 0.7f, 1f, 0.9f));
                 prev = new Vector2(ptx, pty);
                 bool isBase = ReferenceEquals(r, baseline);
+                bool isSel = i == _runIndex;
+                if (isSel) DrawRect(ptx - 6, pty - 6, 12, 12, new Color(1, 1, 1, 0.9f));   // selected ring
                 var col = isBase ? new Color(1f, 0.8f, 0.3f) : new Color(0.4f, 0.66f, 0.98f);
                 float ds = isBase ? 9f : 7f;
                 DrawRect(ptx - ds / 2, pty - ds / 2, ds, ds, col);
-                var hit = new Rect(ptx - 9, pty - 9, 18, 18);
-                _pointRects.Add(hit); _pointRun.Add(i);
+                _pointRects.Add(new Rect(ptx - 9, pty - 9, 18, 18)); _pointRun.Add(i);
             }
-            // x labels: first / last attempt index
             GUI.Label(new Rect(px - 4, py + ph + 2, 40, 14), "<size=9>#1</size>", _tiny);
             if (n > 1) GUI.Label(new Rect(px + pw - 24, py + ph + 2, 30, 14), $"<size=9>#{n}</size>", _tiny);
-            cy = py + ph + 18;
-
-            GUI.Label(new Rect(ix, cy, iw, lh), $"<size=11><color=#FFC857>◆</color> {Loc.G("baseline")}　{Loc.G("chart_hint")}</size>", _dim);
         }
 
         private void DrawLine(Vector2 a, Vector2 b, Color c)

@@ -285,7 +285,7 @@ namespace TbhDpsMeter
             if (_bgTex == null || !Mathf.Approximately(_bgAlphaBaked, _opacity))
             {
                 if (_bgTex == null) _bgTex = new Texture2D(1, 1);
-                _bgTex.SetPixel(0, 0, new Color(0.04f, 0.05f, 0.08f, _opacity));
+                _bgTex.SetPixel(0, 0, new Color(0f, 0f, 0f, 1f));   // solid black, no transparency
                 _bgTex.Apply();
                 _bgAlphaBaked = _opacity;
                 if (_box != null) _box.normal.background = _bgTex;
@@ -472,7 +472,7 @@ namespace TbhDpsMeter
 
         private void DrawDistribution(float x, float y, float w, float h, List<DpsTracker.TypePart> parts, double total, float lh)
         {
-            DrawRect(x, y, w, h, new Color(0f, 0f, 0f, 0.35f));
+            DrawRect(x, y, w, h, new Color(0f, 0f, 0f, 1f));
             if (parts == null || parts.Count == 0 || total <= 0) return;
 
             float cx = x;
