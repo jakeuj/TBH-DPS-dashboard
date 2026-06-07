@@ -38,17 +38,20 @@ UI auto-detects **English / 日本語 / 繁體中文 / 简体中文 / Español**
 - Two distribution bars: element attribute (physical/fire/ice/lightning/chaos) and damage type
 
 ## Stage Compare (F11)
-Press **F11** to open the **stage-compare panel**: it groups your saved runs by stage and shows the
-current run against a **baseline** (fastest clear by default, or a run you pin), with deltas for
-duration, **active vs idle (running) time**, avg/peak/crit, damage distribution, **per-wave times**,
-and **gear & skill changes** (so you can see how a loadout change affected your clear). Use ◀ ▶ to
-browse runs, ≪ ≫ to switch stages, and the pin button to set a baseline.
+Press **F11** to open the **stage-compare panel**: it groups your saved runs by stage (per difficulty)
+and shows the current run against a **baseline** (fastest clear by default, or a run you pin), with
+deltas for duration, **active vs idle (running) time**, avg/peak/crit, attributes, damage distribution
+and **per-wave times** — plus the **full per-character loadout**: equipped **gear** (with item names &
+affixes) and **skills** (with levels), per party member, highlighting what changed vs the baseline.
+A clear-time trend chart sits on top; click a point to inspect that run. Use ◀ ▶ to browse runs,
+≪ ≫ to switch stages, the character tabs to switch hero, and the pin button to set a baseline.
 
-The stage name, character tabs and skill names follow the **in-game language** — set the game to English / 日本語 / 繁體中文 / 简体中文 / Español and the panel switches live (no restart needed).
+Stage / character / skill / item names follow the **in-game language** — set the game to English /
+日本語 / 繁體中文 / 简体中文 / Español and the panel switches live (no restart needed).
 
 <img src="image/TaskBarHero_5BRF6aiQF5.png" alt="Stage-compare panel" width="420">
 
-> *Clear-time trend on top (click a point to inspect that run); below, **baseline ∣ this run** in aligned columns with green/red deltas, plus skill changes.*
+> *Clear-time trend on top (click a point to inspect that run); below, **baseline ∣ this run** in aligned columns with green/red deltas, plus the character's gear & skills.*
 
 ## Controls
 - **F9** — toggle the DPS panel (configurable: `ToggleKey`)
