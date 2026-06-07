@@ -158,9 +158,11 @@ namespace TbhDpsMeter
         }
 
         /// <summary>Display name for a character id, looked up from either run's party.</summary>
-        private static string CharName(RunRecord a, RunRecord b, string id)
+        private static string CharName(RunRecord baseline, RunRecord current, string id)
         {
-            foreach (var r in new[] { a, b })
+            // prefer the current run's (newer) name so a fresh localized capture wins over an
+            // older run that may still hold English/legacy names
+            foreach (var r in new[] { current, baseline })
                 if (r != null)
                     foreach (var s in r.Party)
                         if (s != null && s.Character == id && !string.IsNullOrEmpty(s.CharacterName))
