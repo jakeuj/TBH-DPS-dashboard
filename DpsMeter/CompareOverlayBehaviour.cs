@@ -369,9 +369,11 @@ namespace TbhDpsMeter
                 for (int i = 0; i < distRows; i++)
                 {
                     var d = dist[i];
-                    string col = Mathf.Abs(d.cur - d.bas) < 0.001f ? "#aeb6c2" : (d.cur > d.bas ? "#5fd07c" : "#ef6a5a");
+                    string col = Mathf.Abs(d.cur - d.bas) < 0.001f ? "#ffffff" : (d.cur > d.bas ? "#5fd07c" : "#ef6a5a");
                     string nm = Loc.Name(DpsTracker.DecodeName(d.flag));
-                    GUI.Label(new Rect(lx, ly, leftColW, lh), $"<color=#{ColorHex(d.flag)}>■</color> {nm} {d.bas * 100f:0.#}% → <color={col}>{d.cur * 100f:0.#}%</color>", _label);
+                    // aligned baseline | this columns (consistent with the other sections)
+                    GUI.Label(new Rect(lx, ly, subW, lh), $"<color=#{ColorHex(d.flag)}>■</color> <color=#aeb6c2>{nm}</color> {d.bas * 100f:0.#}%", _label);
+                    GUI.Label(new Rect(rxc + 4, ly, subW, lh), $"<color={col}>{d.cur * 100f:0.#}%</color>", _col);
                     ly += lh;
                 }
                 GUI.Label(new Rect(lx, ly, leftColW, lh), $"{Loc.G("per_wave")}", _dim); ly += lh;

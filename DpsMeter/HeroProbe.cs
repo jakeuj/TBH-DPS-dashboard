@@ -163,12 +163,27 @@ namespace TbhDpsMeter
                 yield return ToUL(e.Current);
         }
 
+        /// <summary>Resolve a type by full name, first in the game assembly (where obfuscated
+        /// types like "ue+ti" live), then across all loaded assemblies (for engine/package types
+        /// such as Unity.Localization which are in their own interop assembly).</summary>
+        public static Type FindType(string typeName)
+        {
+            try { var t = typeof(Hero).Assembly.GetType(typeName); if (t != null) return t; } catch { }
+            try
+            {
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                { try { var t = asm.GetType(typeName); if (t != null) return t; } catch { } }
+            }
+            catch { }
+            return null;
+        }
+
         /// <summary>Invoke a static method on an Il2Cpp interop type resolved by name (e.g. "ue+ti").</summary>
         public static object CallStatic(string typeName, string method, params object[] args)
         {
             try
             {
-                var t = typeof(Hero).Assembly.GetType(typeName);
+                var t = FindType(typeName);
                 if (t == null) return null;
                 int n = args?.Length ?? 0;
                 foreach (var m in t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
@@ -477,17 +492,24 @@ namespace TbhDpsMeter
         {
             try
             {
-                var cache = Refl.Get(hero, "cache");
-                // equipped items are referenced by uid (10 ObscuredULong) in jgr()/brqt — no indexer
-                object uids = Refl.Call(cache, "jgr") ?? Refl.Get(cache, "brqt");
-                if (uids == null) return;
-                foreach (var uid in Refl.EnumerateUids(uids))
+                // The equipped-uid collection (IReadOnlyCollection<ObscuredULong>) resists reflection
+                // enumeration. Try to TryCast it to a concrete Il2Cpp List we can index; log the real
+                // runtime type + cast results so we can pin down the right path in-game.
+                object col = hero.cache.brqt;
+                if (col == null) return;
+                var bo = col as Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase;
+                var asList = bo?.TryCast<Il2CppSystem.Collections.Generic.List<CodeStage.AntiCheat.ObscuredTypes.ObscuredULong>>();
+                if (Plugin.DebugSnapshot != null && Plugin.DebugSnapshot.Value)
+                    Plugin.Logger?.LogInfo($"[gear] brqt type={col.GetType().FullName} asList={asList != null} ienumNG={(bo?.TryCast<Il2CppSystem.Collections.IEnumerable>() != null)}");
+                if (asList == null) return;
+                for (int gidx = 0; gidx < asList.Count; gidx++)
                 {
                     try
                     {
+                        ulong uid = Refl.ToUL((object)asList[gidx]);
                         if (uid == 0) continue;
-                        object item = null;
-                        foreach (var fn in ItemLookups) { item = Refl.CallStatic("ue+ti", fn, uid); if (item != null) break; }
+                        object item = ue.ti.opd(uid);
+                        if (item == null) item = ue.ti.ish(uid);
                         if (item == null) continue;
 
                         var g = new GearItem();

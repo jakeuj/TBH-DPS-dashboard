@@ -11,8 +11,13 @@ namespace TbhDpsMeter
     {
         public static Lang Current = Lang.ZhHant;
 
+        // True when the user left Language=Auto: we then follow the game's in-game locale live.
+        private static bool _auto;
+        private static float _nextAutoCheck;
+
         public static void Init(string cfg)
         {
+            _auto = false;
             switch ((cfg ?? "Auto").Trim().ToLowerInvariant())
             {
                 case "zh": case "zh-hant": case "zh_tw": case "chinese": case "繁體中文": Current = Lang.ZhHant; break;
@@ -20,12 +25,28 @@ namespace TbhDpsMeter
                 case "en": case "english": Current = Lang.En; break;
                 case "ja": case "jp": case "japanese": case "日本語": Current = Lang.Ja; break;
                 case "es": case "spanish": case "español": case "espanol": Current = Lang.Es; break;
-                default: Current = Detect(); break;
+                default: _auto = true; Current = Detect(); break;
             }
+        }
+
+        /// <summary>In Auto mode, re-read the game's current locale so an in-game language switch
+        /// updates the overlays live. Throttled to ~1/sec; called from the overlay Update loop.</summary>
+        public static void MaybeRefreshAuto()
+        {
+            if (!_auto) return;
+            float t = Time.realtimeSinceStartup;
+            if (t < _nextAutoCheck) return;
+            _nextAutoCheck = t + 1f;
+            var g = GameLang();
+            if (g.HasValue) Current = g.Value;
         }
 
         private static Lang Detect()
         {
+            // Prefer the game's in-game locale (what the player actually selected); the system
+            // language is only a fallback for before Localization is ready / when unavailable.
+            var g = GameLang();
+            if (g.HasValue) return g.Value;
             try
             {
                 switch (Application.systemLanguage)
@@ -40,6 +61,38 @@ namespace TbhDpsMeter
             }
             catch { }
             return Lang.En;
+        }
+
+        /// <summary>The game's currently selected Unity-Localization locale, mapped to our Lang.
+        /// Null if Localization isn't ready or the code is unrecognized.</summary>
+        private static Lang? GameLang()
+        {
+            try
+            {
+                const string LS = "UnityEngine.Localization.Settings.LocalizationSettings";
+                var sel = Refl.CallStatic(LS, "get_SelectedLocale");
+                if (sel == null) return null;
+                var id = Refl.Get(sel, "Identifier");
+                string code = Refl.Str(Refl.Get(id, "Code"));
+                if (string.IsNullOrEmpty(code)) code = Refl.Str(id);   // LocaleIdentifier.ToString() fallback
+                return MapCode(code);
+            }
+            catch { return null; }
+        }
+
+        private static Lang? MapCode(string code)
+        {
+            if (string.IsNullOrEmpty(code)) return null;
+            code = code.Trim().ToLowerInvariant().Replace('_', '-');
+            if (code.StartsWith("zh"))
+            {
+                if (code.Contains("hans") || code.Contains("cn") || code.Contains("sg")) return Lang.ZhHans;
+                return Lang.ZhHant;   // zh / zh-hant / zh-tw / zh-hk
+            }
+            if (code.StartsWith("ja")) return Lang.Ja;
+            if (code.StartsWith("es")) return Lang.Es;
+            if (code.StartsWith("en")) return Lang.En;
+            return null;
         }
 
         // key -> { zh-Hant, English, 日本語, zh-Hans, Español }

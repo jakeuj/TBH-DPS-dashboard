@@ -83,6 +83,7 @@ namespace TbhDpsMeter
         {
             try
             {
+                Loc.MaybeRefreshAuto();
                 PollStageState();
 
                 InputCompat.Poll();
