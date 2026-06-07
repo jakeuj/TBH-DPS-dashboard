@@ -36,6 +36,7 @@ namespace TbhDpsMeter
             {
                 var hero = HeroProbe.FindHero();
                 if (hero == null) return snap;
+                if (Plugin.DebugSnapshot != null && Plugin.DebugSnapshot.Value) HeroProbe.Diagnose(hero);
                 HeroProbe.ReadStats(hero, snap);
                 HeroProbe.ReadGear(hero, snap);
                 HeroProbe.ReadSkills(hero, snap);

@@ -73,6 +73,111 @@ namespace TbhDpsMeter
             }
         }
 
+        /// <summary>Enumerate via GetEnumerator/MoveNext/Current — works for IReadOnlyCollection/IEnumerable
+        /// that have no indexer (e.g. the equipped-item uid collection).</summary>
+        public static IEnumerable<object> EnumerateE(object seq)
+        {
+            if (seq == null) yield break;
+            // Preferred: cast to the Il2Cpp non-generic IEnumerable so Il2CppInterop's own enumerator
+            // is used (reflection can't see the explicit interface members on interface wrappers).
+            if (seq is Il2CppSystem.Collections.IEnumerable il2cppEnum)
+            {
+                var e = il2cppEnum.GetEnumerator();
+                int g2 = 0;
+                while (e != null && g2++ < 512 && e.MoveNext())
+                    if (e.Current != null) yield return e.Current;
+                yield break;
+            }
+            object en = InvokeBySuffix(seq, "GetEnumerator");
+            if (en == null) { foreach (var x in Enumerate(seq)) yield return x; yield break; }
+            int guard = 0;
+            while (guard++ < 512)
+            {
+                object mv = InvokeBySuffix(en, "MoveNext");
+                bool moved; try { moved = Convert.ToBoolean(mv); } catch { yield break; }
+                if (!moved) yield break;
+                object cur = GetBySuffix(en, "Current") ?? InvokeBySuffix(en, "get_Current");
+                if (cur != null) yield return cur;
+            }
+        }
+
+        /// <summary>Invoke a zero-arg method whose name equals or ends with the suffix
+        /// (handles explicit interface impls like "...IEnumerable.GetEnumerator").</summary>
+        private static object InvokeBySuffix(object o, string suffix)
+        {
+            if (o == null) return null;
+            try
+            {
+                MethodInfo best = null;
+                foreach (var m in o.GetType().GetMethods(F))
+                {
+                    if (m.GetParameters().Length != 0) continue;
+                    if (m.Name == suffix) { best = m; break; }
+                    if (best == null && m.Name.EndsWith("." + suffix)) best = m;
+                }
+                return best?.Invoke(o, null);
+            }
+            catch { return null; }
+        }
+
+        private static object GetBySuffix(object o, string suffix)
+        {
+            if (o == null) return null;
+            try
+            {
+                foreach (var p in o.GetType().GetProperties(F))
+                    if ((p.Name == suffix || p.Name.EndsWith("." + suffix)) && p.CanRead) return p.GetValue(o);
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>Decrypt an ACTk ObscuredULong (or similar) to a plain value: implicit cast op, else ToString-parse.</summary>
+        public static ulong ToUL(object o)
+        {
+            if (o == null) return 0;
+            try
+            {
+                foreach (var m in o.GetType().GetMethods(BindingFlags.Public | BindingFlags.Static))
+                    if (m.Name == "op_Implicit" && m.ReturnType == typeof(ulong))
+                        return (ulong)m.Invoke(null, new[] { o });
+            }
+            catch { }
+            try { return ulong.TryParse(o.ToString(), out var u) ? u : 0; } catch { return 0; }
+        }
+
+        /// <summary>Enumerate the equipped-item uid collection (IReadOnlyCollection&lt;ObscuredULong&gt;)
+        /// via a typed Il2CppInterop cast — reflection can't see its explicit interface members.</summary>
+        public static IEnumerable<ulong> EnumerateUids(object uidsObj)
+        {
+            // C# `as`/`is` can't see Il2Cpp interface implementations — use Il2CppInterop TryCast,
+            // which checks the actual Il2Cpp type.
+            var baseObj = uidsObj as Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase;
+            if (baseObj == null) yield break;
+            var seq = baseObj.TryCast<Il2CppSystem.Collections.Generic.IEnumerable<CodeStage.AntiCheat.ObscuredTypes.ObscuredULong>>();
+            if (seq == null) yield break;
+            var e = seq.GetEnumerator();
+            var ne = ((Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase)(object)e).TryCast<Il2CppSystem.Collections.IEnumerator>();
+            int guard = 0;
+            while (ne != null && guard++ < 256 && ne.MoveNext())
+                yield return ToUL(e.Current);
+        }
+
+        /// <summary>Invoke a static method on an Il2Cpp interop type resolved by name (e.g. "ue+ti").</summary>
+        public static object CallStatic(string typeName, string method, params object[] args)
+        {
+            try
+            {
+                var t = typeof(Hero).Assembly.GetType(typeName);
+                if (t == null) return null;
+                int n = args?.Length ?? 0;
+                foreach (var m in t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
+                    if (m.Name == method && m.GetParameters().Length == n) return m.Invoke(null, args);
+            }
+            catch { }
+            return null;
+        }
+
         public static double ToD(object o) { try { return o == null ? 0 : Convert.ToDouble(o); } catch { return 0; } }
         public static int ToI(object o) { try { return o == null ? 0 : Convert.ToInt32(o); } catch { return 0; } }
         public static string Str(object o) { try { return o?.ToString() ?? ""; } catch { return ""; } }
@@ -149,6 +254,93 @@ namespace TbhDpsMeter
         private static Type _statType;
         private static Type StatTypeT => _statType ?? (_statType = typeof(Hero).Assembly.GetType("TaskbarHero.StatType"));
 
+        private static void Log(string s) => Plugin.Logger?.LogInfo("[snap diag] " + s);
+
+        /// <summary>One-shot structural dump to identify the right gear/skill containers in-game.</summary>
+        public static void Diagnose(Hero hero)
+        {
+            try
+            {
+                var cache = Refl.Get(hero, "cache");
+                Log("cache type = " + (cache?.GetType().FullName ?? "null"));
+                // gear container candidates
+                foreach (var name in new[] { "jhe", "jgr", "brrd", "brqt", "brrf", "brqr", "brqs" })
+                {
+                    var v = name.Length == 3 && (name[0] == 'j') ? Refl.Call(cache, name) : Refl.Get(cache, name);
+                    if (v == null) v = Refl.Call(cache, name);
+                    if (v == null) { continue; }
+                    int cnt = -1; try { var c = Refl.Get(v, "Count") ?? Refl.Get(v, "Length"); if (c != null) cnt = Convert.ToInt32(c); } catch { }
+                    object first = null; foreach (var it in Refl.Enumerate(v)) { first = it; break; }
+                    Log($"cache.{name} -> {v.GetType().FullName} count={cnt} first={(first?.GetType().FullName ?? "-")}");
+                    if (first != null)
+                    {
+                        var info = Refl.Get(first, "brke");
+                        Log($"   first.brke={(info?.GetType().FullName ?? "null")} NameKey={Refl.Str(Refl.Get(info, "NameKey"))} ItemKey={Refl.ToI(Refl.Get(info, "ItemKey"))} GEARTYPE={Refl.Str(Refl.Get(info, "GEARTYPE"))}");
+                    }
+                }
+                // skill list candidates
+                foreach (var name in new[] { "bchl", "bchk" })
+                {
+                    var v = Refl.Get(hero, name);
+                    if (v == null) { Log($"hero.{name} = null"); continue; }
+                    int cnt = -1; try { var c = Refl.Get(v, "Count"); if (c != null) cnt = Convert.ToInt32(c); } catch { }
+                    object first = null; foreach (var it in Refl.Enumerate(v)) { first = it; break; }
+                    Log($"hero.{name} -> {v.GetType().FullName} count={cnt} first={(first?.GetType().FullName ?? (cnt < 0 ? v.GetType().Name : "-"))}");
+                    var sk = first ?? (cnt < 0 ? v : null);
+                    if (sk != null)
+                    {
+                        var sc = Refl.Get(sk, "skillCache");
+                        var info = Refl.Get(sc, "behi");
+                        Log($"   skillCache={(sc?.GetType().FullName ?? "null")} behi={(info?.GetType().FullName ?? "null")} NameKey={Refl.Str(Refl.Get(info, "SkillNameKey"))} SkillKey={Refl.ToI(Refl.Get(info, "SkillKey"))}");
+                    }
+                }
+                // index-based skills via Unit.gsn(i)
+                for (int i = 0; i < 8; i++)
+                {
+                    var sk = Refl.Call(hero, "gsn", i);
+                    if (sk == null) { Log($"gsn({i}) = null"); continue; }
+                    var sc = Refl.Get(sk, "skillCache");
+                    var info = Refl.Get(sc, "behi");
+                    int key = Refl.ToI(Refl.Get(info, "SkillKey"));
+                    Log($"gsn({i}) -> {sk.GetType().Name} sc={(sc?.GetType().Name ?? "null")} SkillKey={key} NameKey={Refl.Str(Refl.Get(info, "SkillNameKey"))}");
+                    if (sc != null && key != 0)
+                        foreach (var g in SkillLevelMembers)
+                            Log($"   lvl {g} = {ParseLevel(Refl.Get(sc, g) ?? Refl.Call(sc, g))}");
+                }
+                // list-field skill containers
+                foreach (var fld in new[] { "bchd", "bche" })
+                {
+                    var v = Refl.Get(hero, fld);
+                    if (v == null) { Log($"hero.{fld}=null"); continue; }
+                    int cnt = -1; try { var c = Refl.Get(v, "Count"); if (c != null) cnt = Convert.ToInt32(c); } catch { }
+                    object first = null; foreach (var it in Refl.Enumerate(v)) { first = it; break; }
+                    Log($"hero.{fld} -> {v.GetType().FullName} count={cnt} first={(first?.GetType().FullName ?? "-")}");
+                }
+                // skill level probing on the real equipped list (bchd)
+                foreach (var sk in Refl.Enumerate(Refl.Get(hero, "bchd")))
+                {
+                    var sc = Refl.Get(sk, "skillCache");
+                    int key = Refl.ToI(Refl.Get(Refl.Get(sc, "behi"), "SkillKey"));
+                    var sb = new System.Text.StringBuilder($"bchd skill key={key} levels:");
+                    foreach (var g in SkillLevelMembers) sb.Append($" {g}={ParseLevel(Refl.Get(sc, g) ?? Refl.Call(sc, g))}");
+                    Log(sb.ToString());
+                    // also probe int getters on ActiveSkill itself
+                    foreach (var g in new[] { "mes", "meu", "mex", "mfb", "mfd" }) Log($"   AS.{g}={ParseLevel(Refl.Call(sk, g))}");
+                }
+                // gear: step through the uid collection enumerator explicitly
+                var cacheG = Refl.Get(hero, "cache");
+                var uids = Refl.Call(cacheG, "jgr") ?? Refl.Get(cacheG, "brqt");
+                int gi = 0;
+                foreach (var uid in Refl.EnumerateUids(uids))
+                {
+                    object item = Refl.CallStatic("ue+ti", "opd", uid) ?? Refl.CallStatic("ue+ti", "ish", uid);
+                    Log($"   uid={uid} opd->{(item?.GetType().Name ?? "null")} slot={Refl.Str(Refl.Call(item, "ips"))} name={Refl.Str(Refl.Get(Refl.Get(item, "brke"), "NameKey"))}");
+                    if (++gi >= 4) break;
+                }
+            }
+            catch (Exception e) { Log("Diagnose ex: " + e.Message); }
+        }
+
         public static Hero FindHero()
         {
             try
@@ -208,21 +400,33 @@ namespace TbhDpsMeter
             catch { return null; }
         }
 
+        private static readonly string[] ItemLookups = { "opd", "ish", "isl", "esx" };
+
+        // KNOWN LIMITATION (verified in-game): the equipped-item uid collection
+        // (ug.jgr() -> IReadOnlyCollection<ObscuredULong>) can't be enumerated via reflection
+        // or Il2CppInterop TryCast — its interface members are explicit impls invisible to both.
+        // This degrades to "no gear" safely; a typed-Il2CppInterop pass on `ug` is the follow-up.
         public static void ReadGear(Hero hero, CharacterSnapshot snap)
         {
             try
             {
                 var cache = Refl.Get(hero, "cache");
-                object list = Refl.Call(cache, "jhe") ?? Refl.Get(cache, "brrd") ?? Refl.Call(cache, "jgr");
-                if (list == null) return;
-                foreach (var item in Refl.Enumerate(list))
+                // equipped items are referenced by uid (10 ObscuredULong) in jgr()/brqt — no indexer
+                object uids = Refl.Call(cache, "jgr") ?? Refl.Get(cache, "brqt");
+                if (uids == null) return;
+                foreach (var uid in Refl.EnumerateUids(uids))
                 {
                     try
                     {
+                        if (uid == 0) continue;
+                        object item = null;
+                        foreach (var fn in ItemLookups) { item = Refl.CallStatic("ue+ti", fn, uid); if (item != null) break; }
+                        if (item == null) continue;
+
                         var g = new GearItem();
                         var info = Refl.Get(item, "brke");          // ItemInfoData
                         g.Name = Refl.Str(Refl.Get(info, "NameKey"));
-                        g.Slot = Refl.Str(Refl.Get(info, "GEARTYPE"));
+                        g.Slot = Refl.Str(Refl.Call(item, "ips"));  // EGearType
                         if (string.IsNullOrEmpty(g.Name)) g.Name = "item" + Refl.ToI(Refl.Get(info, "ItemKey"));
 
                         foreach (var slot in GearModSlots)
@@ -245,53 +449,63 @@ namespace TbhDpsMeter
             catch (Exception e) { Plugin.Logger?.LogWarning("ReadGear: " + e.Message); }
         }
 
+        // candidate level accessors on the skill cache (uo): int getters + ObscuredInt fields
+        private static readonly string[] SkillLevelMembers =
+        { "jjy", "jjz", "jka", "jkb", "jke", "jkf", "jkg", "jkh", "jki", "jkm", "behj", "behk", "behl", "behm" };
+
         public static void ReadSkills(Hero hero, CharacterSnapshot snap)
         {
             try
             {
-                var list = Refl.Get(hero, "bchl");   // List<ActiveSkill> on Unit
-                if (list == null) return;
-                string levelGetter = null;
-                foreach (var sk in Refl.Enumerate(list))
+                var seen = new HashSet<int>();
+                foreach (var sk in EquippedSkills(hero))
                 {
                     try
                     {
                         var cache = Refl.Get(sk, "skillCache");      // uo
                         var info = Refl.Get(cache, "behi");          // SkillInfoData
+                        int key = Refl.ToI(Refl.Get(info, "SkillKey"));
+                        if (key == 0) continue;                      // skip empty/template slots
+                        if (!seen.Add(key)) continue;                // de-dup across sources
                         string name = Refl.Str(Refl.Get(info, "SkillNameKey"));
-                        if (string.IsNullOrEmpty(name)) name = "skill" + Refl.ToI(Refl.Get(info, "SkillKey"));
-
-                        if (levelGetter == null) levelGetter = PickSkillLevelGetter(cache);
-                        int lv = levelGetter != null ? Refl.ToI(Refl.Call(cache, levelGetter)) : 0;
-                        snap.Skills.Add(new SkillEntry(name, lv));
+                        if (string.IsNullOrEmpty(name)) name = "skill" + key;
+                        snap.Skills.Add(new SkillEntry(name, ReadSkillLevel(sk, cache)));
                     }
                     catch { }
-                }
-
-                if (Plugin.DebugSnapshot != null && Plugin.DebugSnapshot.Value)
-                {
-                    foreach (var sk in Refl.Enumerate(list))
-                    {
-                        var cache = Refl.Get(sk, "skillCache");
-                        foreach (var g in SkillLevelGetters)
-                            Plugin.Logger?.LogInfo($"[snap skill getter] {g}() = {Refl.ToI(Refl.Call(cache, g))}");
-                        break;
-                    }
                 }
             }
             catch (Exception e) { Plugin.Logger?.LogWarning("ReadSkills: " + e.Message); }
         }
 
-        private static string PickSkillLevelGetter(object cache)
+        /// <summary>Yield candidate ActiveSkill instances from several holders (gsn slots, list fields, getters).</summary>
+        private static IEnumerable<object> EquippedSkills(Hero hero)
         {
-            // a real skill level is a small positive number; pick the first getter that returns 1..50
-            foreach (var g in SkillLevelGetters)
+            for (int i = 0; i < 8; i++) { var sk = Refl.Call(hero, "gsn", i); if (sk != null) yield return sk; }
+            foreach (var fld in new[] { "bchd", "bche" })
+                foreach (var sk in Refl.Enumerate(Refl.Get(hero, fld))) if (sk != null) yield return sk;
+            foreach (var g in new[] { "gsr", "gss" }) { var sk = Refl.Call(hero, g); if (sk != null) yield return sk; }
+        }
+
+        private static int ParseLevel(object v)
+        {
+            int i = Refl.ToI(v);
+            if (i != 0) return i;
+            try { if (v != null && int.TryParse(v.ToString(), out var p)) return p; } catch { }
+            return 0;
+        }
+
+        /// <summary>Skill level: ActiveSkill.meu (total level, ≥1 for equipped) with fallbacks to the
+        /// skillCache ObscuredInt (behk / jjz). Verified in-game: meu=1/13/5, behk/jjz=0/13/5.</summary>
+        private static int ReadSkillLevel(object sk, object cache)
+        {
+            int lv = ParseLevel(Refl.Call(sk, "meu"));
+            if (lv >= 1 && lv <= 99) return lv;
+            foreach (var g in new[] { "behk", "jjz" })
             {
-                var v = Refl.Call(cache, g);
-                int i = Refl.ToI(v);
-                if (i >= 1 && i <= 50) return g;
+                int v = ParseLevel(Refl.Get(cache, g) ?? Refl.Call(cache, g));
+                if (v >= 1 && v <= 99) return v;
             }
-            return SkillLevelGetters[0];
+            return lv;
         }
     }
 }

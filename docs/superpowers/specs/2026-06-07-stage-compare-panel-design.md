@@ -118,6 +118,28 @@
 4. 確認裝備/技能有讀到（名稱為 key 可接受）；詞綴數值合理。
 5. 全部 OK 後發 v0.2.0 Release（含新 zip）。
 
+## E2E 驗證結果（遊戲內實測，2026-06-07）
+
+關掉遊戲→部署→Steam 重啟→打完關卡，讀實際存檔 + log 驗證：
+
+| 項目 | 結果 |
+|---|---|
+| 插件載入 / 3 patch / StageProbe hook UI_Stage.hqk / 三面板 | ✅ |
+| 關卡 ID（`StageInfoData.Act-StageNo`） | ✅ `stageid=2-2` |
+| 每波時間（27 波）/ 有效·停輸出（203/92，和≈時長298.5） | ✅ |
+| 屬性（attack/aspd/critrate/critdmg/hp/armor/mspd，`xe.nsc(StatType)`） | ✅ 真實值 |
+| 傷害分配 / 承受面 / 序列化 v2 / v1 相容 | ✅ |
+| 技能（清單 `Unit.bchd`=List&lt;ActiveSkill&gt;，名稱 key + 等級 `ActiveSkill.meu`） | ✅ 等級 1/13/5 正確 |
+| **裝備詞綴** | ❌ **已知限制** |
+
+### 已知限制：裝備詞綴未擷取
+已裝備物件以 uid 存在 `ug.jgr()` 回傳的 `IReadOnlyCollection<ObscuredULong>`（10 個）。
+此介面集合無法經由「反射 / C# as / Il2CppInterop TryCast」列舉（Il2CppInterop 對介面 wrapper
+的顯式實作，反射看不到；`is IEnumerable`=false、`TryCast<IEnumerable<ObscuredULong>>`=null）。
+經 7 次遊戲內迭代仍未突破。程式碼路徑保留（`HeroProbe.ReadGear` + `EnumerateUids`，安全降級為不輸出），
+待後續以 typed Il2CppInterop（直接 cast `cache` 為 `ug` 並 typed 呼叫 `jgr()`）解決。
+其餘比較維度不受影響。
+
 ## 範圍外（YAGNI）
 
 - 跨關卡比較、跨角色比較
