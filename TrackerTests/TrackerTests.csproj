@@ -9,5 +9,8 @@
   <ItemGroup>
     <Compile Include="..\DpsMeter\DpsTracker.cs" />
     <Compile Include="..\DpsMeter\DamageTakenTracker.cs" />
+    <Compile Include="..\DpsMeter\RunModels.cs" />
+    <Compile Include="..\DpsMeter\RunSerializer.cs" />
+    <Compile Include="..\DpsMeter\StageCompare.cs" />
   </ItemGroup>
 </Project>

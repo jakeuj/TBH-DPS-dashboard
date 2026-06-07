@@ -14,7 +14,7 @@ namespace TbhDpsMeter
     {
         public const string Guid = "tbh.dpsmeter";
         public const string Name = "TBH DPS Meter";
-        public const string Version = "0.1.0";
+        public const string Version = "0.2.0";
 
         public static DpsTracker Tracker;
         public static DamageTakenTracker TakenTracker;
@@ -41,8 +41,17 @@ namespace TbhDpsMeter
         public static ConfigEntry<bool> TakenStartVisible;
         private static ConfigEntry<string> _takenToggleKeyName;
 
+        // stage-compare panel config
+        public static ConfigEntry<float> ComparePosX;
+        public static ConfigEntry<float> ComparePosY;
+        public static ConfigEntry<float> ComparePanelWidth;
+        public static ConfigEntry<bool> CompareStartVisible;
+        private static ConfigEntry<string> _compareToggleKeyName;
+        public static ConfigEntry<bool> DebugSnapshot;
+
         public static KeyCode ToggleKey = KeyCode.F9;
         public static KeyCode TakenToggleKey = KeyCode.F10;
+        public static KeyCode CompareToggleKey = KeyCode.F11;
 
         private static int _dbgCount;
 
@@ -70,10 +79,19 @@ namespace TbhDpsMeter
             TakenStartVisible = Config.Bind("TakenUI", "StartVisible", true, "Show the damage-taken overlay on launch.");
             _takenToggleKeyName = Config.Bind("TakenUI", "ToggleKey", "F10", "Key to show/hide the damage-taken overlay (UnityEngine.KeyCode name).");
 
+            ComparePosX = Config.Bind("CompareUI", "PosX", -1f, "Stage-compare overlay X (auto-saved when dragged). -1 = auto.");
+            ComparePosY = Config.Bind("CompareUI", "PosY", -1f, "Stage-compare overlay Y (auto-saved when dragged). -1 = auto.");
+            ComparePanelWidth = Config.Bind("CompareUI", "PanelWidth", 380f, "Stage-compare overlay panel width in pixels.");
+            CompareStartVisible = Config.Bind("CompareUI", "StartVisible", false, "Show the stage-compare overlay on launch.");
+            _compareToggleKeyName = Config.Bind("CompareUI", "ToggleKey", "F11", "Key to show/hide the stage-compare overlay (UnityEngine.KeyCode name).");
+            DebugSnapshot = Config.Bind("Debug", "LogSnapshot", false, "Log character-snapshot reflection diagnostics to verify obfuscated member picks.");
+
             if (!Enum.TryParse(_toggleKeyName.Value, true, out ToggleKey))
                 ToggleKey = KeyCode.F9;
             if (!Enum.TryParse(_takenToggleKeyName.Value, true, out TakenToggleKey))
                 TakenToggleKey = KeyCode.F10;
+            if (!Enum.TryParse(_compareToggleKeyName.Value, true, out CompareToggleKey))
+                CompareToggleKey = KeyCode.F11;
 
             Tracker = new DpsTracker(WindowSeconds.Value);
             TakenTracker = new DamageTakenTracker(WindowSeconds.Value);
@@ -82,17 +100,20 @@ namespace TbhDpsMeter
             TryPatch(harmony, typeof(Monster_TakeDamage_Patch), "Monster.ebj damage hook");
             TryPatch(harmony, typeof(Hero_TakeDamage_Patch), "Hero.gnr damage-taken hook");
             TryPatch(harmony, typeof(StageState_Patch), "StageManager.set_stageState wave hook");
+            StageProbe.TryHook(harmony);
 
             try
             {
                 ClassInjector.RegisterTypeInIl2Cpp<OverlayBehaviour>();
                 ClassInjector.RegisterTypeInIl2Cpp<TakenOverlayBehaviour>();
+                ClassInjector.RegisterTypeInIl2Cpp<CompareOverlayBehaviour>();
                 var go = new GameObject("TbhDpsOverlay");
                 UnityEngine.Object.DontDestroyOnLoad(go);
                 go.hideFlags = HideFlags.HideAndDontSave;
                 go.AddComponent<OverlayBehaviour>();
                 go.AddComponent<TakenOverlayBehaviour>();
-                Logger.LogInfo("Overlays created. DPS toggle " + ToggleKey + ", taken toggle " + TakenToggleKey + ".");
+                go.AddComponent<CompareOverlayBehaviour>();
+                Logger.LogInfo("Overlays created. DPS " + ToggleKey + ", taken " + TakenToggleKey + ", compare " + CompareToggleKey + ".");
             }
             catch (Exception ex)
             {

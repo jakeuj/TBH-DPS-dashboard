@@ -133,7 +133,158 @@ class Tests
         // attribute decode
         Check("[taken] decode attr 3 = Lightning", DamageTakenTracker.DecodeAttribute(3) == "Lightning", DamageTakenTracker.DecodeAttribute(3));
 
+        StageCompareTests();
+        SerializerTests();
+
         Console.WriteLine(_fail == 0 ? "\nALL TESTS PASSED" : $"\n{_fail} TEST(S) FAILED");
         return _fail == 0 ? 0 : 1;
+    }
+
+    // ================= StageCompare =================
+    static RunRecord Run(string stage, string title, float dur, double total, float avg)
+        => new RunRecord { StageId = stage, Title = title, Duration = dur, Total = total, Avg = avg };
+
+    static void StageCompareTests()
+    {
+        Console.WriteLine("\n-- StageCompare --");
+        var r36a = Run("3-6", "a", 80f, 500, 6.1f);
+        var r36b = Run("3-6", "b", 72f, 510, 6.7f);   // fastest -> default baseline
+        var r36c = Run("3-6", "c", 90f, 480, 5.9f);
+        var r41  = Run("4-1", "d", 60f, 300, 5.0f);
+        var runs = new System.Collections.Generic.List<RunRecord> { r36a, r36b, r36c, r41 };
+
+        var groups = StageCompare.GroupByStage(runs);
+        Check("[cmp] 2 stage groups", groups.Count == 2, groups.Count);
+        Check("[cmp] 3-6 has 3 runs", groups["3-6"].Count == 3, groups["3-6"].Count);
+
+        var baseDefault = StageCompare.PickBaseline(groups["3-6"]);
+        Check("[cmp] default baseline = fastest (b)", baseDefault.Title == "b", baseDefault.Title);
+
+        var basePinned = StageCompare.PickBaseline(groups["3-6"], "c");
+        Check("[cmp] pinned baseline = c", basePinned.Title == "c", basePinned.Title);
+
+        var cmp = StageCompare.Compare(baseDefault, r36a);
+        var dur = cmp.Metrics.Find(m => m.Key == "duration");
+        Check("[cmp] duration delta = +8", Near(dur.Delta, 8f), dur.Delta);
+        var avgm = cmp.Metrics.Find(m => m.Key == "avg");
+        Check("[cmp] avg pct ~ -8.96%", Near(avgm.PercentDelta, (6.1 - 6.7) / 6.7 * 100, 0.1), avgm.PercentDelta);
+        Check("[cmp] self-compare flags IsBaseline", StageCompare.Compare(baseDefault, baseDefault).IsBaseline, false);
+
+        // wave diffs
+        var b = new RunRecord(); b.WaveDurations.AddRange(new[] { 8f, 9f, 10f });
+        var c = new RunRecord(); c.WaveDurations.AddRange(new[] { 8.5f, 9f, 13f });
+        var wres = StageCompare.Compare(b, c);
+        Check("[cmp] 3 wave deltas", wres.Waves.Count == 3, wres.Waves.Count);
+        Check("[cmp] wave3 delta = +3", Near(wres.Waves[2].Delta, 3f), wres.Waves[2].Delta);
+
+        // gear & skill & stat diffs (match by slot)
+        var bs = new CharacterSnapshot { Captured = true };
+        bs.Stats.Add(new StatEntry("attack", 1240));
+        bs.Stats.Add(new StatEntry("aspd", 1.45));
+        var bow = new GearItem { Slot = "weapon", Name = "FlameBow" }; bow.Affixes.Add(new Affix("Fire", 45));
+        bs.Equipment.Add(bow);
+        bs.Equipment.Add(new GearItem { Slot = "ring", Name = "Ring" });
+        bs.Skills.Add(new SkillEntry("Trap", 5));
+        bs.Skills.Add(new SkillEntry("Shot", 3));
+
+        var cs = new CharacterSnapshot { Captured = true };
+        cs.Stats.Add(new StatEntry("attack", 1180));
+        cs.Stats.Add(new StatEntry("aspd", 1.62));
+        var bow2 = new GearItem { Slot = "weapon", Name = "WindBow" }; bow2.Affixes.Add(new Affix("Speed", 18));
+        cs.Equipment.Add(bow2);
+        cs.Equipment.Add(new GearItem { Slot = "ring", Name = "Ring" });  // unchanged
+        cs.Skills.Add(new SkillEntry("Rain", 3));   // added
+        cs.Skills.Add(new SkillEntry("Shot", 4));   // level up 3->4
+        // Trap removed
+
+        var rb = new RunRecord { Snapshot = bs };
+        var rc = new RunRecord { Snapshot = cs };
+        var dres = StageCompare.Compare(rb, rc);
+
+        var atk = dres.Stats.Find(m => m.Key == "attack");
+        Check("[cmp] attack 1240->1180", Near(atk.Baseline, 1240) && Near(atk.Current, 1180), atk.Current);
+
+        Check("[cmp] 1 gear changed (weapon)", dres.Gear.Count == 1 && dres.Gear[0].Kind == StageCompare.ChangeKind.Changed, dres.Gear.Count);
+        Check("[cmp] weapon changed key=weapon", dres.Gear[0].Key == "weapon", dres.Gear[0].Key);
+
+        int added = 0, removed = 0, changed = 0;
+        foreach (var sc in dres.Skills)
+        {
+            if (sc.Kind == StageCompare.ChangeKind.Added) added++;
+            if (sc.Kind == StageCompare.ChangeKind.Removed) removed++;
+            if (sc.Kind == StageCompare.ChangeKind.Changed) changed++;
+        }
+        Check("[cmp] skills: +1 added (Rain)", added == 1, added);
+        Check("[cmp] skills: 1 removed (Trap)", removed == 1, removed);
+        Check("[cmp] skills: 1 changed (Shot 3->4)", changed == 1, changed);
+
+        // gear affix order / duplicate-name must not produce a false "Changed"
+        var ga = new CharacterSnapshot { Captured = true };
+        var gi1 = new GearItem { Slot = "w", Name = "Bow" }; gi1.Affixes.Add(new Affix("Fire", 10)); gi1.Affixes.Add(new Affix("Fire", 20));
+        ga.Equipment.Add(gi1);
+        var gb = new CharacterSnapshot { Captured = true };
+        var gi2 = new GearItem { Slot = "w", Name = "Bow" }; gi2.Affixes.Add(new Affix("Fire", 20)); gi2.Affixes.Add(new Affix("Fire", 10));
+        gb.Equipment.Add(gi2);
+        var gcmp = StageCompare.Compare(new RunRecord { Snapshot = ga }, new RunRecord { Snapshot = gb });
+        Check("[cmp] reordered dup affixes = no change", gcmp.Gear.Count == 0, gcmp.Gear.Count);
+        var gi3 = new GearItem { Slot = "w", Name = "Bow" }; gi3.Affixes.Add(new Affix("Fire", 10)); gi3.Affixes.Add(new Affix("Fire", 30));
+        var gc2 = new CharacterSnapshot { Captured = true }; gc2.Equipment.Add(gi3);
+        var gcmp2 = StageCompare.Compare(new RunRecord { Snapshot = ga }, new RunRecord { Snapshot = gc2 });
+        Check("[cmp] real affix change detected", gcmp2.Gear.Count == 1 && gcmp2.Gear[0].Kind == StageCompare.ChangeKind.Changed, gcmp2.Gear.Count);
+    }
+
+    // ================= RunSerializer round-trip =================
+    static void SerializerTests()
+    {
+        Console.WriteLine("\n-- RunSerializer --");
+        var r = new RunRecord
+        {
+            Title = "06/07 12:34", StageId = "3-6", Total = 489930, Duration = 72.8f,
+            Peak = 15020, Avg = 6730, CritRate = 0.099f, CritShare = 0.149f, Waves = 7,
+            ActiveSeconds = 61.0f, IdleSeconds = 11.8f,
+        };
+        r.TypeFlags.Add(2); r.TypeAmounts.Add(300000);
+        r.TypeFlags.Add(1); r.TypeAmounts.Add(189930);
+        r.WaveDurations.AddRange(new[] { 8.2f, 9.1f, 10.4f });
+        r.Samples.Add(new Sample { Dps = 6500.5f, Wave = 1 });
+        r.Samples.Add(new Sample { Dps = 7200f, Wave = 2 });
+        r.TakenTotal = 4580; r.TakenPeak = 171; r.TakenAvg = 63; r.TakenBiggestHit = 98; r.TakenCritRate = 0f; r.TakenHits = 59;
+        r.TakenAttrValues.Add(1); r.TakenAttrAmounts.Add(3000);
+        r.TakenTypeFlags.Add(2); r.TakenTypeAmounts.Add(2000);
+        var snap = new CharacterSnapshot { Captured = true };
+        snap.Stats.Add(new StatEntry("attack", 1240));
+        var g = new GearItem { Slot = "weapon", Name = "Flame Bow" };
+        g.Affixes.Add(new Affix("Fire", 45)); g.Affixes.Add(new Affix("Crit", 5.5));
+        snap.Equipment.Add(g);
+        snap.Skills.Add(new SkillEntry("Arrow Rain", 3));
+        r.Snapshot = snap;
+
+        string text = RunSerializer.Serialize(r);
+        var r2 = RunSerializer.Deserialize(text.Split('\n'));
+
+        Check("[ser] title", r2.Title == r.Title, r2.Title);
+        Check("[ser] stageid", r2.StageId == "3-6", r2.StageId);
+        Check("[ser] total", Near(r2.Total, r.Total), r2.Total);
+        Check("[ser] active", Near(r2.ActiveSeconds, 61.0), r2.ActiveSeconds);
+        Check("[ser] idle", Near(r2.IdleSeconds, 11.8, 0.05), r2.IdleSeconds);
+        Check("[ser] 2 type rows", r2.TypeFlags.Count == 2, r2.TypeFlags.Count);
+        Check("[ser] wavedur 3", r2.WaveDurations.Count == 3 && Near(r2.WaveDurations[2], 10.4, 0.05), r2.WaveDurations.Count);
+        Check("[ser] samples 2", r2.Samples.Count == 2 && r2.Samples[1].Wave == 2, r2.Samples.Count);
+        Check("[ser] taken hits", r2.TakenHits == 59, r2.TakenHits);
+        Check("[ser] snapshot captured", r2.Snapshot != null && r2.Snapshot.Captured, r2.Snapshot != null);
+        Check("[ser] snap stat", r2.Snapshot.Stats.Count == 1 && Near(r2.Snapshot.Stats[0].Value, 1240), r2.Snapshot.Stats.Count);
+        Check("[ser] snap gear+affixes", r2.Snapshot.Equipment.Count == 1 && r2.Snapshot.Equipment[0].Affixes.Count == 2, r2.Snapshot.Equipment.Count);
+        Check("[ser] gear name preserved", r2.Snapshot.Equipment[0].Name == "Flame Bow", r2.Snapshot.Equipment[0].Name);
+        Check("[ser] gear affix value", Near(r2.Snapshot.Equipment[0].Affixes[1].Value, 5.5), r2.Snapshot.Equipment[0].Affixes[1].Value);
+        Check("[ser] snap skill+level", r2.Snapshot.Skills.Count == 1 && r2.Snapshot.Skills[0].Level == 3, r2.Snapshot.Skills.Count);
+
+        // v1 backward compat: old file with no version / no new fields
+        string v1 = "title=old\ntotal=1000\nduration=30\navg=33\nwaves=5\ntype=1:1000\nhist=100:1,200:2\n";
+        var r3 = RunSerializer.Deserialize(v1.Split('\n'));
+        Check("[ser] v1 loads title", r3.Title == "old", r3.Title);
+        Check("[ser] v1 total", Near(r3.Total, 1000), r3.Total);
+        Check("[ser] v1 no stageid", r3.StageId == "", r3.StageId);
+        Check("[ser] v1 no snapshot", r3.Snapshot == null, r3.Snapshot);
+        Check("[ser] v1 samples", r3.Samples.Count == 2, r3.Samples.Count);
     }
 }

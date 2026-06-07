@@ -45,6 +45,12 @@ namespace TbhDpsMeter
         private float _nextSampleTime;
         private int _currentWave;
 
+        // per-wave timing + active/idle accounting (stage-compare)
+        private readonly List<float> _waveDurations = new List<float>();
+        private float _waveStartTime = -1f;
+        private float _activeSec, _idleSec;
+        private float _prevDmgTime = -1f;
+
         // stage-boundary detection
         private StageManager _stage;
         private int _lastState = -999;
@@ -104,6 +110,19 @@ namespace TbhDpsMeter
                 if (now >= _nextSampleTime)
                 {
                     _nextSampleTime = now + SampleInterval;
+
+                    // active vs idle: did any damage land since the previous tick?
+                    // Idle deliberately includes "frozen" stretches — that downtime (running
+                    // between packs) is exactly the "跑路" time we want; the _currentWave gate
+                    // stops counting once the stage ends (NONE resets it to 0).
+                    float dmgTime = Plugin.Tracker.LastDamageTime;
+                    if (_currentWave >= 1 && _prevDmgTime >= 0f)
+                    {
+                        if (dmgTime > _prevDmgTime) _activeSec += SampleInterval;
+                        else _idleSec += SampleInterval;
+                    }
+                    _prevDmgTime = dmgTime;
+
                     if (!IsFrozen(now))
                     {
                         float live = Plugin.Tracker.GetSnapshot(EffectiveNow(now)).LiveDps;
@@ -154,6 +173,10 @@ namespace TbhDpsMeter
             _history.Clear();
             _currentWave = 0;
             _reviewIndex = -1;
+            _waveDurations.Clear();
+            _waveStartTime = -1f;
+            _activeSec = _idleSec = 0f;
+            _prevDmgTime = -1f;
         }
 
         private void PollStageState()
@@ -179,16 +202,33 @@ namespace TbhDpsMeter
             var es = (EStageState)state;
             if (es == EStageState.NONE)
             {
+                // close out the wave that was in progress before saving
+                if (_currentWave >= 1 && _waveStartTime >= 0)
+                {
+                    float wd = Time.time - _waveStartTime;
+                    if (wd > 0.05f) _waveDurations.Add(wd);
+                }
                 SaveCurrentRun();
                 Plugin.Tracker.StartEncounter(Time.time);
                 Plugin.TakenTracker.StartEncounter(Time.time);
                 _history.Clear();
                 _currentWave = 0;
                 Plugin.CurrentWave = 0;
+                _waveDurations.Clear();
+                _waveStartTime = -1f;
+                _activeSec = _idleSec = 0f;
+                _prevDmgTime = -1f;
             }
             else if (es == EStageState.MONSTERSPAWN)
             {
+                // close the previous wave's timing, then start the next
+                if (_currentWave >= 1 && _waveStartTime >= 0)
+                {
+                    float wd = Time.time - _waveStartTime;
+                    if (wd > 0.05f) _waveDurations.Add(wd);
+                }
                 _currentWave++;
+                _waveStartTime = Time.time;
                 Plugin.CurrentWave = _currentWave;
             }
         }
@@ -201,7 +241,7 @@ namespace TbhDpsMeter
                 if (s.Hits <= 0 || s.Total <= 0) return;
                 var r = new RunRecord
                 {
-                    Title = DateTime.Now.ToString("MM/dd HH:mm"),
+                    Title = DateTime.Now.ToString("MM/dd HH:mm:ss"),
                     Total = s.Total,
                     Duration = s.DurationSeconds,
                     Peak = s.PeakDps,
@@ -209,9 +249,14 @@ namespace TbhDpsMeter
                     CritRate = s.CritRate,
                     CritShare = s.CritDamageShare,
                     Waves = _currentWave,
+                    StageId = CharacterReader.CurrentStageId(),
+                    ActiveSeconds = _activeSec,
+                    IdleSeconds = _idleSec,
                 };
                 foreach (var p in s.ByType) { r.TypeFlags.Add(p.Flag); r.TypeAmounts.Add(p.Amount); }
                 foreach (var smp in _history) r.Samples.Add(smp);
+                r.WaveDurations.AddRange(_waveDurations);
+                r.Snapshot = CharacterReader.Capture();
 
                 // fold in the damage-taken (defense) side of the same encounter
                 var ts = Plugin.TakenTracker.GetSnapshot(Time.time);

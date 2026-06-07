@@ -37,9 +37,17 @@ UI auto-detects **English / 日本語 / 繁體中文 / 简体中文 / Español**
 - **Hits** (times you were hit) + **incoming crit** (monsters' crit rate against you)
 - Two distribution bars: element attribute (physical/fire/ice/lightning/chaos) and damage type
 
+## Stage Compare (F11)
+Press **F11** to open the **stage-compare panel**: it groups your saved runs by stage and shows the
+current run against a **baseline** (fastest clear by default, or a run you pin), with deltas for
+duration, **active vs idle (running) time**, avg/peak/crit, damage distribution, **per-wave times**,
+and **gear & skill changes** (so you can see how a loadout change affected your clear). Use ◀ ▶ to
+browse runs, ≪ ≫ to switch stages, and the pin button to set a baseline.
+
 ## Controls
 - **F9** — toggle the DPS panel (configurable: `ToggleKey`)
 - **F10** — toggle the damage-taken panel (configurable: `TakenUI.ToggleKey`)
+- **F11** — toggle the stage-compare panel (configurable: `CompareUI.ToggleKey`)
 - **Mouse drag** — move a panel (positions saved independently)
 - **Reset** button (top-right) zeroes the meter; **◀ ▶** browse past-stage records
 - **PageUp / PageDown** — adjust panel opacity (shared by both panels)
