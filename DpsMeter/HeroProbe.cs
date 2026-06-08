@@ -435,7 +435,7 @@ namespace TbhDpsMeter
                 // The game displays item names from the live item object (tf). We have the plaintext
                 // uid from the save, so fetch tf via opd(uid) (single lookup, no ACTk enumeration)
                 // and try its name getters — these are what the inventory UI shows.
-                object item = uid != 0 ? ue.ti.opd(uid) : null;
+                object item = uid != 0 ? Refl.CallStatic("ue+ti", "opd", uid) : null;
                 bool diag = !_itemNameDiagDone && Plugin.DebugSnapshot != null && Plugin.DebugSnapshot.Value;
                 if (item != null)
                 {
@@ -588,8 +588,7 @@ namespace TbhDpsMeter
                     try
                     {
                         ulong uid = Refl.ToUL(rawUid);
-                        object item = ue.ti.opd(uid);
-                        if (item == null) item = ue.ti.ish(uid);
+                        object item = Refl.CallStatic("ue+ti", "opd", uid) ?? Refl.CallStatic("ue+ti", "ish", uid);
                         if (dbg && gdiag++ < 4)
                             Plugin.Logger?.LogInfo($"[gear] rawType={rawUid?.GetType().Name} rawStr='{Refl.Str(rawUid)}' uid={uid} opd={(item != null ? item.GetType().Name : "null")} name={(item != null ? Refl.Str(Refl.Get(Refl.Get(item, "brke"), "NameKey")) : "")}");
                         if (uid == 0) continue;

@@ -32,6 +32,21 @@ namespace TbhDpsMeter
         [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vKey);
         private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
+        // Low-level mouse hook: lets us SWALLOW a left-click when the cursor is over one of our
+        // panels, so the click no longer falls through to the game (or, in windowed mode, the
+        // desktop / other apps). Polling can detect a click but cannot consume it; only a hook can.
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MSLLHOOKSTRUCT { public POINT pt; public uint mouseData; public uint flags; public uint time; public IntPtr dwExtraInfo; }
+        private delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
+        [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr SetWindowsHookEx(int idHook, HookProc lpfn, IntPtr hMod, uint dwThreadId);
+        [DllImport("user32.dll", SetLastError = true)] private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+        [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr GetModuleHandle(string lpModuleName);
+
+        private const int WH_MOUSE_LL = 14;
+        private const int HC_ACTION = 0;
+        private const int WM_LBUTTONDOWN = 0x0201, WM_LBUTTONUP = 0x0202, WM_LBUTTONDBLCLK = 0x0203;
+
         private const string UnityWindowClass = "UnityWndClass";
 
         private const int VK_LBUTTON = 0x01;
@@ -47,9 +62,112 @@ namespace TbhDpsMeter
         private static Vector2 _pos;
         private static bool _down, _pressed, _released;
         private static bool _lb, _f9, _pgUp, _pgDn;            // previous key states
+        private static int _seenDownSeq, _seenUpSeq;           // last hook edge counts consumed by Poll
         private static bool _f9Edge, _pgUpEdge, _pgDnEdge;
 
         private static bool Key(int vk) => (GetAsyncKeyState(vk) & 0x8000) != 0;
+
+        // Panel rectangles (GUI coords) the hook should treat as solid. One slot per overlay;
+        // each overlay re-registers its rect + visibility every frame from Update().
+        private const int MaxPanels = 4;
+        private static readonly Rect[] _panelRect = new Rect[MaxPanels];
+        private static readonly bool[] _panelOn = new bool[MaxPanels];
+
+        /// <summary>Register an overlay's panel so left-clicks over it are swallowed (not passed
+        /// through). slot is a stable per-overlay id (0 DPS / 1 taken / 2 compare).</summary>
+        public static void SetPanel(int slot, bool visible, Rect rectGui)
+        {
+            if (slot < 0 || slot >= MaxPanels) return;
+            _panelOn[slot] = visible;
+            _panelRect[slot] = rectGui;
+        }
+
+        private static IntPtr _hookHandle = IntPtr.Zero;
+        private static HookProc _hookProc;   // keep a managed ref alive so the GC can't collect the thunk
+        private static bool _hookTried;
+
+        private static void EnsureMouseHook()
+        {
+            if (_hookTried) return;
+            _hookTried = true;
+            try
+            {
+                _hookProc = MouseHookCallback;
+                _hookHandle = SetWindowsHookEx(WH_MOUSE_LL, _hookProc, GetModuleHandle(null), 0);
+                Plugin.Logger?.LogInfo(_hookHandle != IntPtr.Zero
+                    ? "Mouse click-through guard installed (WH_MOUSE_LL)."
+                    : "WH_MOUSE_LL install failed; panels will still pass clicks through.");
+            }
+            catch (Exception e) { Plugin.Logger?.LogWarning("mouse hook ex: " + e.Message); }
+        }
+
+        /// <summary>Remove the hook (call on shutdown so we don't leave a global hook dangling).</summary>
+        public static void UninstallMouseHook()
+        {
+            try { if (_hookHandle != IntPtr.Zero) { UnhookWindowsHookEx(_hookHandle); _hookHandle = IntPtr.Zero; } }
+            catch { }
+        }
+
+        // Swallow left-clicks that land on a visible panel so they don't fall through to the game
+        // or desktop. Set false to make the hook log-only (diagnostics).
+        private static bool _swallowEnabled = true;
+
+        // Left-button state sourced FROM the hook. Swallowing a click stops GetAsyncKeyState from
+        // reporting it, so once the hook is installed it becomes our source of truth for the button.
+        // Sequence counters latch press/release edges so a down+up inside one frame isn't missed.
+        private static volatile bool _hookLbDown;
+        private static volatile int _hookDownSeq, _hookUpSeq;
+
+        private static IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            try
+            {
+                if (nCode == HC_ACTION)
+                {
+                    int msg = wParam.ToInt32();
+                    if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP || msg == WM_LBUTTONDBLCLK)
+                    {
+                        if (msg == WM_LBUTTONUP) { _hookLbDown = false; _hookUpSeq++; }
+                        else { _hookLbDown = true; _hookDownSeq++; }
+
+                        var data = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
+                        if (OverAnyPanel(data.pt.X, data.pt.Y, out var g, out int slot, out _))
+                        {
+                            if (Plugin.DebugDamage != null && Plugin.DebugDamage.Value)
+                                Plugin.Logger?.LogInfo($"[hook] {(msg == WM_LBUTTONUP ? "up" : "down")} gui=({g.x:0},{g.y:0}) slot={slot} swallow={_swallowEnabled}");
+                            if (_swallowEnabled) return (IntPtr)1;   // don't forward to the game or desktop
+                        }
+                    }
+                }
+            }
+            catch (Exception e) { Plugin.Logger?.LogWarning("[hook] cb ex: " + e.Message); }
+            return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+        }
+
+        private static bool OverAnyPanel(int screenX, int screenY, out Vector2 gui, out int slot, out Rect rect)
+        {
+            slot = -1; rect = default;
+            if (!ScreenToGuiPoint(screenX, screenY, out gui)) return false;
+            for (int i = 0; i < MaxPanels; i++)
+                if (_panelOn[i] && _panelRect[i].Contains(gui)) { slot = i; rect = _panelRect[i]; return true; }
+            return false;
+        }
+
+        /// <summary>Map a desktop point to IMGUI/GUI coords (same basis as the cursor in Poll()).</summary>
+        private static bool ScreenToGuiPoint(int screenX, int screenY, out Vector2 gui)
+        {
+            gui = default;
+            IntPtr h = ResolveGameWindow();
+            if (h == IntPtr.Zero) return false;
+            var p = new POINT { X = screenX, Y = screenY };
+            ScreenToClient(h, ref p);
+            int cw = _cw, ch = _ch;
+            if (GetClientRect(h, out var rc)) { cw = rc.Right - rc.Left; ch = rc.Bottom - rc.Top; }
+            float fx = cw > 0 ? (float)Screen.width / cw : 1f;
+            float fy = ch > 0 ? (float)Screen.height / ch : 1f;
+            gui = new Vector2(p.X * fx, p.Y * fy);
+            return true;
+        }
 
         private static int _polledFrame = -1;
         public static void Poll()
@@ -58,6 +176,7 @@ namespace TbhDpsMeter
             int frame = Time.frameCount;
             if (frame == _polledFrame) return;
             _polledFrame = frame;
+            EnsureMouseHook();
             try
             {
                 if (GetCursorPos(out var p))
@@ -81,10 +200,21 @@ namespace TbhDpsMeter
                     _pos = new Vector2(cp.X * _sx, cp.Y * _sy);
                 }
 
-                bool lb = Key(VK_LBUTTON);
-                _pressed = lb && !_lb;
-                _released = !lb && _lb;
-                _down = lb; _lb = lb;
+                if (_hookHandle != IntPtr.Zero)
+                {
+                    // Hook is the source of truth (GetAsyncKeyState goes blind once we swallow).
+                    // Latch edges via the sequence counters so single-frame clicks aren't lost.
+                    _pressed = _hookDownSeq != _seenDownSeq; _seenDownSeq = _hookDownSeq;
+                    _released = _hookUpSeq != _seenUpSeq; _seenUpSeq = _hookUpSeq;
+                    _down = _hookLbDown; _lb = _down;
+                }
+                else
+                {
+                    bool lb = Key(VK_LBUTTON);
+                    _pressed = lb && !_lb;
+                    _released = !lb && _lb;
+                    _down = lb; _lb = lb;
+                }
 
                 bool f9 = Key(VK_F9); _f9Edge = f9 && !_f9; _f9 = f9;
                 bool pu = Key(VK_PRIOR); _pgUpEdge = pu && !_pgUp; _pgUp = pu;

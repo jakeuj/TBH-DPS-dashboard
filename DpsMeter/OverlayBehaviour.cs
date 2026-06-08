@@ -71,6 +71,8 @@ namespace TbhDpsMeter
 
         void Start() => PlaceDefault();
 
+        void OnDestroy() { try { InputCompat.UninstallMouseHook(); } catch { } }
+
         private void PlaceDefault()
         {
             float px = Plugin.PosX.Value, py = Plugin.PosY.Value;
@@ -84,6 +86,7 @@ namespace TbhDpsMeter
             try
             {
                 Loc.MaybeRefreshAuto();
+                InputCompat.SetPanel(0, _visible, _rect);
                 PollStageState();
 
                 InputCompat.Poll();

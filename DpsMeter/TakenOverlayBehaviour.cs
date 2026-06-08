@@ -65,6 +65,7 @@ namespace TbhDpsMeter
         {
             try
             {
+                InputCompat.SetPanel(1, _visible, _rect);
                 if (InputCompat.TogglePressed(Plugin.TakenToggleKey)) _visible = !_visible;
                 if (_visible)
                 {

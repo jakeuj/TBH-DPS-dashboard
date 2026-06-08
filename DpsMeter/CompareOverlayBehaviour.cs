@@ -65,6 +65,7 @@ namespace TbhDpsMeter
             try
             {
                 InputCompat.Poll();
+                InputCompat.SetPanel(2, _visible, _rect);
                 if (InputCompat.KeyPressed(Plugin.CompareToggleKey))
                 {
                     _visible = !_visible;
