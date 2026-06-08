@@ -143,7 +143,10 @@ namespace TbhDpsMeter
                 if (nCode == HC_ACTION)
                 {
                     int msg = wParam.ToInt32();
-                    if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP || msg == WM_LBUTTONDBLCLK)
+                    // CRITICAL: this is a SYSTEM-WIDE hook. Only act on clicks when the GAME is the
+                    // foreground window — otherwise we'd swallow clicks meant for other apps (e.g. a
+                    // browser) just because they land where a panel sits in game coords.
+                    if ((msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP || msg == WM_LBUTTONDBLCLK) && GameIsForeground())
                     {
                         if (msg == WM_LBUTTONUP) { _hookLbDown = false; _hookUpSeq++; }
                         else { _hookLbDown = true; _hookDownSeq++; }
@@ -239,6 +242,20 @@ namespace TbhDpsMeter
                 bool pd = Key(VK_NEXT); _pgDnEdge = pd && !_pgDn; _pgDn = pd;
             }
             catch { }
+        }
+
+        /// <summary>True only when the game's own window is the foreground window. Gates the global
+        /// mouse hook so it never swallows clicks destined for other applications.</summary>
+        private static bool GameIsForeground()
+        {
+            try
+            {
+                IntPtr fg = GetForegroundWindow();
+                if (fg == IntPtr.Zero) return false;
+                IntPtr game = ResolveGameWindow();
+                return game != IntPtr.Zero && fg == game;
+            }
+            catch { return false; }
         }
 
         private static IntPtr ResolveGameWindow()
