@@ -474,10 +474,9 @@ namespace TbhDpsMeter
             {
                 var cache = Refl.Get(hero, "cache");
                 if (cache == null) return double.NaN;
-                // jgx() is the decrypted accessor. Do NOT fall back to the raw backing field brqz:
-                // when jgx is momentarily null (scene transition), brqz returns the still-encrypted
-                // value (~hundreds of millions of garbage) which corrupted per-run exp deltas.
-                var v = Refl.Call(cache, "jgx");
+                // post game-update: cumulative exp is exposed as the plain (decrypted) mirror field
+                // brqv; the old jgx() accessor is gone. Fall back to jgx() for older builds.
+                var v = Refl.Get(cache, "brqv") ?? Refl.Call(cache, "jgx");
                 return v == null ? double.NaN : Refl.ToD(v);
             }
             catch { return double.NaN; }
@@ -518,36 +517,15 @@ namespace TbhDpsMeter
         {
             try
             {
-                // The game displays item names from the live item object (tf). We have the plaintext
-                // uid from the save, so fetch tf via opd(uid) (single lookup, no ACTk enumeration)
-                // and try its name getters — these are what the inventory UI shows.
-                object item = uid != 0 ? Refl.CallStatic("ue+ti", "opd", uid) : null;
-                bool diag = !_itemNameDiagDone && Plugin.DebugSnapshot != null && Plugin.DebugSnapshot.Value;
-                if (item != null)
+                // The live item (tf) carries the game-resolved localized display name in brkn
+                // (brko is the raw NameKey, which the default localizer can't resolve after the game
+                // update). Fetch tf by uid via hcb (was opd).
+                if (uid != 0)
                 {
-                    if (diag)
-                    {
-                        _itemNameDiagDone = true;
-                        var sb = new System.Text.StringBuilder($"[item] key={itemKey} tf gettters:");
-                        foreach (var g in TfNameGetters) sb.Append($" {g}='{Refl.Str(Refl.Call(item, g) ?? Refl.Get(item, g))}'");
-                        Plugin.Logger?.LogInfo(sb.ToString());
-                    }
-                    foreach (var g in TfNameGetters)
-                    {
-                        string s = Refl.Str(Refl.Call(item, g) ?? Refl.Get(item, g));
-                        if (Resolved(s, "") && !IsNumeric(s)) return s;
-                    }
-                }
-                // fall back: ItemInfoData.NameKey via localizer
-                var info = Refl.CallStatic("ue+ti", "isr", itemKey);   // ItemInfoData
-                string nameKey = Refl.Str(Refl.Get(info, "NameKey"));
-                if (string.IsNullOrEmpty(nameKey)) return "";
-                string name = GameLoc(nameKey);
-                if (Resolved(name, nameKey)) return name;
-                foreach (var tbl in ItemTables)
-                {
-                    string s = Refl.Str(Refl.CallStatic("nm", "gbt", tbl, nameKey));
-                    if (Resolved(s, nameKey)) return s;
+                    object tf = Refl.CallStatic("ue+ti", "hcb", uid) ?? Refl.CallStatic("ue+ti", "isk", uid);
+                    string s = Refl.Str(Refl.Get(tf, "brkn"));
+                    if (!string.IsNullOrEmpty(s) && s.IndexOf("No translation", StringComparison.Ordinal) < 0 && !IsNumeric(s))
+                        return s;
                 }
                 return "";
             }
@@ -568,13 +546,19 @@ namespace TbhDpsMeter
             try
             {
                 var cache = Refl.Get(hero, "cache");
-                var info = Refl.Get(cache, "befr");               // HeroInfoData
-                int heroKey = Refl.ToI(Refl.Get(info, "HeroKey"));
-                snap.Character = heroKey != 0 ? heroKey.ToString() : Refl.Str(Refl.Get(info, "ClassType"));
-                string nameKey = Refl.Str(Refl.Get(info, "HeroNameKey"));
-                string name = GameLoc(nameKey);
-                if (string.IsNullOrEmpty(name) || name == nameKey)
-                    name = Refl.Str(Refl.Get(info, "ClassType"));  // e.g. "Priest"/"Hunter"
+                // post game-update: HeroKey / localized name / name-key / class are flattened onto the
+                // cache (brqw / brrb / brrc / brqk); the old befr HeroInfoData path is gone.
+                int heroKey = Refl.ToI(Refl.Get(cache, "brqw"));
+                if (heroKey == 0) heroKey = Refl.ToI(Refl.Get(cache, "bego"));
+                string cls = Refl.Str(Refl.Get(cache, "brqk"));    // EEquipClassType e.g. "Ranger"
+                snap.Character = heroKey != 0 ? heroKey.ToString() : cls;
+                string name = Refl.Str(Refl.Get(cache, "brrb"));   // already localized (follows game language)
+                if (string.IsNullOrEmpty(name))
+                {
+                    string nameKey = Refl.Str(Refl.Get(cache, "brrc"));   // e.g. "HeroName_201"
+                    name = GameLoc(nameKey);
+                    if (string.IsNullOrEmpty(name) || name == nameKey) name = cls;
+                }
                 snap.CharacterName = name;
             }
             catch (Exception e) { Plugin.Logger?.LogWarning("ReadIdentity: " + e.Message); }
@@ -716,24 +700,29 @@ namespace TbhDpsMeter
         {
             try
             {
+                // post game-update: active skills live in hero.bche (Dictionary<int, ActiveSkill>);
+                // continuous skills in hero.bchd. Each skill's skillCache (uo) exposes the localized
+                // name (brrl), key (brrn) and level (brro) directly.
                 var seen = new HashSet<int>();
-                foreach (var sk in EquippedSkills(hero))
+                foreach (var holder in new[] { "bche", "bchd" })
                 {
-                    try
+                    object src = Refl.Get(hero, holder);
+                    var seq = Refl.Get(src, "Values") ?? src;   // bche is a dict (use Values); bchd is a list
+                    foreach (var sk in Refl.EnumerateE(seq))
                     {
-                        var cache = Refl.Get(sk, "skillCache");      // uo
-                        var info = Refl.Get(cache, "behi");          // SkillInfoData
-                        int key = Refl.ToI(Refl.Get(info, "SkillKey"));
-                        if (key == 0) continue;                      // skip empty/template slots
-                        if (!seen.Add(key)) continue;                // de-dup across sources
-                        string nameKey = Refl.Str(Refl.Get(info, "SkillNameKey"));
-                        string name = GameLoc(nameKey);
-                        // basic-attack skills (e.g. 20001/30001/40001) have no display name and aren't
-                        // shown in the game's skill list — skip them.
-                        if (string.IsNullOrEmpty(nameKey) || string.IsNullOrEmpty(name) || name == nameKey) continue;
-                        snap.Skills.Add(new SkillEntry(name, ReadSkillLevel(sk, cache), key));
+                        try
+                        {
+                            var skc = Refl.Get(sk, "skillCache");   // uo
+                            if (skc == null) continue;
+                            int key = Refl.ToI(Refl.Get(skc, "brrn"));
+                            if (key == 0 || !seen.Add(key)) continue;
+                            string name = Refl.Str(Refl.Get(skc, "brrl"));   // localized display name
+                            // basic-attack skills (20001/30001/40001) have no display name — skip them.
+                            if (string.IsNullOrEmpty(name)) continue;
+                            snap.Skills.Add(new SkillEntry(name, Refl.ToI(Refl.Get(skc, "brro")), key));
+                        }
+                        catch { }
                     }
-                    catch { }
                 }
             }
             catch (Exception e) { Plugin.Logger?.LogWarning("ReadSkills: " + e.Message); }
