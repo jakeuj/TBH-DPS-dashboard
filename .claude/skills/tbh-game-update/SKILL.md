@@ -74,10 +74,15 @@ cp DpsMeter/bin/Release/TBH.DpsMeter.dll "$GAME/BepInEx/plugins/TBH.DpsMeter.dll
 
 ## 5. Release
 - Bump `<Version>` in `DpsMeter/DpsMeter.csproj` AND `Plugin.cs` (keep them equal).
-- Stage the DLL into `dist/TBH-DpsMeter/BepInEx/plugins/`, then
+- Stage the DLL into `dist/TBH-DpsMeter/BepInEx/plugins/` (and the patcher into
+  `dist/TBH-DpsMeter/BepInEx/patchers/` — `dotnet build Patcher/Patcher.csproj -c Release`), then
   `Compress-Archive dist/TBH-DpsMeter/* dist/TBH-DpsMeter-vX.Y.Z.zip`.
 - Turn OFF `LogSnapshot` in the local game config before shipping (it's `false` by default in the bind).
-- Commit, `git push origin main`, then `gh release create vX.Y.Z dist/...zip --title ... --notes-file ...`.
+- Commit, `git push origin main`, then create the release with **BOTH** assets — the zip AND the bare
+  DLL (the auto-updater downloads the bare DLL, so it MUST be attached or in-game update breaks):
+  `gh release create vX.Y.Z dist/TBH-DpsMeter-vX.Y.Z.zip DpsMeter/bin/Release/TBH.DpsMeter.dll --title ... --notes-file ...`
+- Existing users auto-update via the in-panel prompt (Updater + TBH.Updater.Patcher); see
+  `docs/superpowers/specs/2026-06-08-auto-update-design.md`.
 
 ## Memory pointers
 [[tbh-wiki-farming-formulas]] · [[deploy-restart-verify]]
