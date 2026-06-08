@@ -1,0 +1,40 @@
+---
+import '../styles/global.css';
+import { SITE_URL, LATEST_VERSION, type Locale } from '../config';
+import { canonical, hreflangLinks, softwareAppJsonLd } from '../lib/seo';
+import Nav from './Nav.astro';
+import Footer from './Footer.astro';
+interface Props { locale: Locale; path: string; title: string; description: string; jsonLd?: boolean; }
+const { locale, path, title, description, jsonLd = false } = Astro.props;
+const url = canonical(SITE_URL, locale, path);
+const alternates = hreflangLinks(SITE_URL, path);
+const ld = jsonLd ? softwareAppJsonLd({ name: 'TBH DPS Meter', version: LATEST_VERSION,
+  screenshots: [`${SITE_URL}/og.png`] }) : null;
+---
+<!doctype html>
+<html lang={locale}>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title}</title>
+  <meta name="description" content={description} />
+  <link rel="canonical" href={url} />
+  {alternates.map((a) => <link rel="alternate" hreflang={a.hreflang} href={a.href} />)}
+  <meta property="og:title" content={title} />
+  <meta property="og:description" content={description} />
+  <meta property="og:url" content={url} />
+  <meta property="og:image" content={`${SITE_URL}/og.png`} />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet" />
+  {ld && <script type="application/ld+json" set:html={JSON.stringify(ld)} />}
+</head>
+<body>
+  <Nav locale={locale} path={path} />
+  <slot />
+  <Footer locale={locale} />
+</body>
+</html>
