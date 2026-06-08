@@ -37,6 +37,14 @@ namespace TbhDpsMeter
         public readonly List<Affix> Affixes = new List<Affix>();
     }
 
+    /// <summary>A treasure box obtained during a run, by type/rarity.</summary>
+    public struct BoxDrop
+    {
+        public string Type;
+        public int Count;
+        public BoxDrop(string type, int count) { Type = type; Count = count; }
+    }
+
     /// <summary>One active skill with its level.</summary>
     public struct SkillEntry
     {
@@ -60,6 +68,10 @@ namespace TbhDpsMeter
         public readonly List<StatEntry> Stats = new List<StatEntry>();
         public readonly List<GearItem> Equipment = new List<GearItem>();
         public readonly List<SkillEntry> Skills = new List<SkillEntry>();
+        /// <summary>This character's EXP gained during the run (end - start).</summary>
+        public double ExpGained;
+        /// <summary>Character level at the time of the run (from the save). 0 = unknown.</summary>
+        public int Level;
 
         public bool HasAny => Stats.Count > 0 || Equipment.Count > 0 || Skills.Count > 0;
     }
@@ -96,5 +108,24 @@ namespace TbhDpsMeter
         /// <summary>Per-character loadout snapshots (whole party) at the moment this run finished.
         /// Empty for old records that had no snapshot.</summary>
         public readonly List<CharacterSnapshot> Party = new List<CharacterSnapshot>();
+
+        // --- rewards gained this run (v4) ---
+        /// <summary>Account gold gained during the run (end - start).</summary>
+        public double GoldGained;
+        /// <summary>Account EXP gained during the run (end - start).</summary>
+        public double ExpGained;
+        /// <summary>Treasure boxes obtained this run, by type/rarity.</summary>
+        public readonly List<BoxDrop> Boxes = new List<BoxDrop>();
+
+        /// <summary>Representative party level (max captured level) for the exp-retention model. 0 = unknown.</summary>
+        public int RepLevel
+        {
+            get
+            {
+                int max = 0;
+                foreach (var s in Party) if (s != null && s.Level > max) max = s.Level;
+                return max;
+            }
+        }
     }
 }

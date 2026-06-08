@@ -15,6 +15,10 @@ namespace TbhDpsMeter
         // reading after a patch, update this constant (the community save tools track the current one).
         private const string Password = "emuMqG3bLYJ938ZDCfieWJ";
 
+        /// <summary>Hero level per heroKey, populated as a side-effect of the last <see cref="ReadParty"/>
+        /// call (the save's heroSaveDatas[].HeroLevel). Used by the farming planner's exp-retention model.</summary>
+        public static readonly Dictionary<int, int> LastHeroLevels = new Dictionary<int, int>();
+
         /// <summary>Parse the live save and return equipped gear per heroKey. Empty on any failure.</summary>
         public static Dictionary<int, List<GearItem>> ReadParty()
         {
@@ -42,10 +46,14 @@ namespace TbhDpsMeter
 
                 var heroes = FindArray(inner, "heroSaveDatas");
                 if (heroes != null)
+                {
+                    LastHeroLevels.Clear();
                     foreach (var h in heroes)
                     {
                         int heroKey = (int)Json.Num(Json.Get(h, "heroKey"));
                         if (heroKey == 0) continue;
+                        int heroLevel = (int)Json.Num(Json.Get(h, "HeroLevel"));
+                        if (heroLevel > 0) LastHeroLevels[heroKey] = heroLevel;
                         var equipped = Json.Arr(Json.Get(h, "equippedItemIds"));
                         if (equipped == null) continue;
                         var list = new List<GearItem>();
@@ -69,6 +77,7 @@ namespace TbhDpsMeter
                         }
                         result[heroKey] = list;
                     }
+                }
             }
             catch (Exception e) { Plugin.Logger?.LogWarning("SaveGearReader: " + e.Message); }
             return result;

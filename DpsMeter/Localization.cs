@@ -41,6 +41,19 @@ namespace TbhDpsMeter
             if (g.HasValue) Current = g.Value;
         }
 
+        /// <summary>Map the current language to the wiki's farm_stages.json locale code.</summary>
+        public static string WikiLangCode()
+        {
+            switch (Current)
+            {
+                case Lang.ZhHant: return "zh-Hant";
+                case Lang.ZhHans: return "zh-Hans";
+                case Lang.Ja: return "ja-JP";
+                case Lang.Es: return "es-ES";
+                default: return "en-US";
+            }
+        }
+
         private static Lang Detect()
         {
             // Prefer the game's in-game locale (what the player actually selected); the system
@@ -140,6 +153,29 @@ namespace TbhDpsMeter
             { "trend",          new[] { "通關秒數趨勢", "Clear-time trend", "クリア秒数推移", "通关秒数趋势", "Tendencia" } },
             { "runs",           new[] { "場", "runs", "回", "场", "part." } },
             { "chart_hint",     new[] { "點某點看該場詳細比較", "click a point for details", "点で詳細比較", "点击查看详细", "click un punto" } },
+            // rewards
+            { "gold",           new[] { "金幣", "Gold", "ゴールド", "金币", "Oro" } },
+            { "exp",            new[] { "經驗", "EXP", "経験値", "经验", "EXP" } },
+            { "boxes",          new[] { "寶箱", "Boxes", "宝箱", "宝箱", "Cajas" } },
+            { "rewards",        new[] { "獎勵", "Rewards", "報酬", "奖励", "Recompensas" } },
+            { "farm_title",     new[] { "刷關效率", "Farming Planner", "周回効率", "刷关效率", "Farmeo" } },
+            { "stage_col",      new[] { "關卡", "Stage", "ステージ", "关卡", "Etapa" } },
+            { "clear_sec",      new[] { "時間", "Time", "時間", "时间", "Tiempo" } },
+            { "source_col",     new[] { "來源", "Source", "ソース", "来源", "Fuente" } },
+            { "src_measured",   new[] { "實測", "Real", "実測", "实测", "Real" } },
+            { "src_estimated",  new[] { "估", "Est.", "推定", "估", "Est." } },
+            { "farm_note",      new[] { "實測為主，未打過用 wiki×個人倍率推估", "Measured first; unplayed = wiki × your multiplier",
+                                        "実測優先・未挑戦はwiki×個人倍率で推定", "实测为主，未打过用 wiki×个人倍率推估",
+                                        "Real primero; no jugadas = wiki × tu multiplicador" } },
+            { "your_mult",      new[] { "你的倍率", "Your mult", "個人倍率", "你的倍率", "Tu mult." } },
+            { "retention",      new[] { "保留", "Keep", "維持", "保留", "Ret." } },
+            { "farm_stale",     new[] { "估算基於舊裝備，打一場以更新基準", "Estimates use an old build — clear a stage to re-calibrate",
+                                        "推定は旧装備基準・1回クリアで更新", "估算基于旧装备，打一场以更新基准",
+                                        "Estimaciones con build viejo — juega una etapa para recalibrar" } },
+            { "basis",          new[] { "基準", "Basis", "基準", "基准", "Base" } },
+            { "cur_build",      new[] { "目前裝備", "current build", "現在の装備", "当前装备", "build actual" } },
+            { "old_build",      new[] { "舊裝備", "old build", "旧装備", "旧装备", "build viejo" } },
+            { "per_s",          new[] { "/秒", "/s", "/秒", "/秒", "/s" } },
             // stage difficulty (ESTAGEDIFFICULTY)
             { "NORMAL",         new[] { "普通", "Normal", "ノーマル", "普通", "Normal" } },
             { "NIGHTMARE",      new[] { "惡夢", "Nightmare", "ナイトメア", "恶梦", "Pesadilla" } },

@@ -27,6 +27,10 @@ namespace TbhDpsMeter
             sb.Append("waves=").Append(r.Waves).Append('\n');
             sb.Append("active=").Append(r.ActiveSeconds.ToString(Inv)).Append('\n');
             sb.Append("idle=").Append(r.IdleSeconds.ToString(Inv)).Append('\n');
+            sb.Append("gold=").Append(r.GoldGained.ToString(Inv)).Append('\n');
+            sb.Append("exp=").Append(r.ExpGained.ToString(Inv)).Append('\n');
+            foreach (var b in r.Boxes)
+                sb.Append("box=").Append(Clean(b.Type)).Append(':').Append(b.Count).Append('\n');
 
             for (int i = 0; i < r.TypeFlags.Count; i++)
                 sb.Append("type=").Append(r.TypeFlags[i]).Append(':').Append(r.TypeAmounts[i].ToString(Inv)).Append('\n');
@@ -67,6 +71,8 @@ namespace TbhDpsMeter
             {
                 if (snap == null || (!snap.Captured && !snap.HasAny)) continue;
                 sb.Append("char=").Append(Clean(snap.Character)).Append(FS).Append(Clean(snap.CharacterName)).Append('\n');
+                if (snap.ExpGained != 0) sb.Append("cexp=").Append(snap.ExpGained.ToString(Inv)).Append('\n');
+                if (snap.Level != 0) sb.Append("clevel=").Append(snap.Level).Append('\n');
                 foreach (var st in snap.Stats)
                     sb.Append("stat=").Append(Clean(st.Key)).Append(':').Append(st.Value.ToString(Inv)).Append('\n');
                 foreach (var g in snap.Equipment)
@@ -122,6 +128,16 @@ namespace TbhDpsMeter
                     case "waves": r.Waves = (int)D(v); break;
                     case "active": r.ActiveSeconds = F(v); break;
                     case "idle": r.IdleSeconds = F(v); break;
+                    case "gold": r.GoldGained = D(v); break;
+                    case "exp": r.ExpGained = D(v); break;
+                    case "box":
+                    {
+                        int c = v.LastIndexOf(':');
+                        if (c > 0) r.Boxes.Add(new BoxDrop(v.Substring(0, c), (int)D(v.Substring(c + 1))));
+                        break;
+                    }
+                    case "cexp": Snap().ExpGained = D(v); break;
+                    case "clevel": Snap().Level = (int)D(v); break;
                     case "type":
                     {
                         int c = v.IndexOf(':');

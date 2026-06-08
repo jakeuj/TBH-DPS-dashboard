@@ -28,6 +28,91 @@ namespace TbhDpsMeter
             catch (Exception e) { Plugin.Logger?.LogWarning("CurrentStageId: " + e.Message); return ""; }
         }
 
+        // ---- per-run reward baseline (captured at stage start; deltas computed at stage end) ----
+        private static long _baseGold;
+        private static readonly System.Collections.Generic.Dictionary<int, double> _baseHeroExp = new System.Collections.Generic.Dictionary<int, double>();
+        // Boxes are granted then auto-opened within a few seconds, so the in-memory count
+        // (jej) is back to ~0 by stage-end. We instead poll the live count every frame and
+        // accumulate every rising edge across the run -> total boxes obtained per type.
+        private static readonly System.Collections.Generic.Dictionary<int, int> _prevBoxLive = new System.Collections.Generic.Dictionary<int, int>();
+        private static readonly System.Collections.Generic.Dictionary<int, int> _runBox = new System.Collections.Generic.Dictionary<int, int>();
+        private static bool _boxTracking;
+        private static bool _rewardDiagDone;
+
+        /// <summary>Snapshot gold / per-hero exp / box counts at the start of a run.</summary>
+        public static void CaptureRewardBaseline()
+        {
+            try
+            {
+                _baseGold = HeroProbe.ReadGold();
+                _baseHeroExp.Clear();
+                foreach (var h in HeroProbe.FindParty())
+                {
+                    if (h == null) continue;
+                    var s = new CharacterSnapshot();
+                    HeroProbe.ReadIdentity(h, s);
+                    if (int.TryParse(s.Character, out int hk))
+                    {
+                        double e = HeroProbe.ReadHeroExp(h);
+                        if (!double.IsNaN(e)) _baseHeroExp[hk] = e;   // skip bad reads; no baseline -> 0 delta
+                    }
+                }
+                _prevBoxLive.Clear();
+                _runBox.Clear();
+                foreach (var bt in HeroProbe.BoxTypes)
+                {
+                    _prevBoxLive[bt] = HeroProbe.ReadBoxCount(bt);
+                    _runBox[bt] = 0;
+                }
+                _boxTracking = true;
+            }
+            catch (Exception e) { Plugin.Logger?.LogWarning("CaptureRewardBaseline: " + e.Message); }
+        }
+
+        /// <summary>Poll the live box count and accumulate rising edges. Call every frame while a
+        /// run is in progress; boxes auto-open within seconds so we must catch them mid-run.</summary>
+        public static void TickBoxes()
+        {
+            if (!_boxTracking) return;
+            try
+            {
+                foreach (var bt in HeroProbe.BoxTypes)
+                {
+                    int cur = HeroProbe.ReadBoxCount(bt);
+                    int prev = _prevBoxLive.TryGetValue(bt, out var p) ? p : cur;
+                    if (cur > prev)
+                    {
+                        _runBox[bt] = (_runBox.TryGetValue(bt, out var rb) ? rb : 0) + (cur - prev);
+                        if (Plugin.DebugSnapshot != null && Plugin.DebugSnapshot.Value)
+                            Plugin.Logger?.LogInfo($"[reward.box] type={bt} +{cur - prev} (live {prev}->{cur}, run total {_runBox[bt]})");
+                    }
+                    _prevBoxLive[bt] = cur;
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>Compute reward deltas (gold, account exp = sum of party, boxes) into the record.
+        /// Per-character exp is already filled on each snapshot by CaptureParty.</summary>
+        public static void FillRewards(RunRecord r)
+        {
+            try
+            {
+                r.GoldGained = HeroProbe.ReadGold() - _baseGold;
+                double totalExp = 0;
+                foreach (var snap in r.Party) totalExp += snap.ExpGained;
+                r.ExpGained = totalExp;
+                TickBoxes();   // catch any final rising edge before we read the accumulator
+                foreach (var bt in HeroProbe.BoxTypes)
+                {
+                    int got = _runBox.TryGetValue(bt, out var rb) ? rb : 0;
+                    if (got > 0) r.Boxes.Add(new BoxDrop(HeroProbe.BoxTypeNames[bt], got));
+                }
+                _boxTracking = false;
+            }
+            catch (Exception e) { Plugin.Logger?.LogWarning("FillRewards: " + e.Message); }
+        }
+
         /// <summary>Capture every party member's loadout. One CharacterSnapshot per hero.</summary>
         public static System.Collections.Generic.List<CharacterSnapshot> CaptureParty()
         {
@@ -41,7 +126,19 @@ namespace TbhDpsMeter
                 {
                     if (hero == null) continue;
                     var snap = CaptureOne(hero, diag);
+                    if (diag && !_rewardDiagDone) { _rewardDiagDone = true; HeroProbe.DiagRewards(hero); }
                     diag = false;   // only dump diagnostics once
+                    // per-character exp gained this run (current - baseline)
+                    if (int.TryParse(snap.Character, out int hkx) && _baseHeroExp.TryGetValue(hkx, out var be))
+                    {
+                        double now = HeroProbe.ReadHeroExp(hero);
+                        double d = now - be;
+                        // exp is cumulative: a negative or NaN delta can only be a bad read -> 0.
+                        snap.ExpGained = (double.IsNaN(d) || d < 0) ? 0 : d;
+                    }
+                    // attach hero level from the save (for the farming planner's exp-retention model)
+                    if (int.TryParse(snap.Character, out int hkl) && SaveGearReader.LastHeroLevels.TryGetValue(hkl, out var lvl))
+                        snap.Level = lvl;
                     // attach gear from the save by heroKey (snap.Character is the HeroKey string)
                     if (int.TryParse(snap.Character, out int hk) && saveGear.TryGetValue(hk, out var gl))
                     {

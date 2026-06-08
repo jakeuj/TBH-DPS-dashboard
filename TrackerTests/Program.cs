@@ -136,6 +136,7 @@ class Tests
         StageCompareTests();
         SerializerTests();
         JsonTests();
+        FarmTests();
 
         Console.WriteLine(_fail == 0 ? "\nALL TESTS PASSED" : $"\n{_fail} TEST(S) FAILED");
         return _fail == 0 ? 0 : 1;
@@ -345,4 +346,138 @@ class Tests
         var priestCmp = StageCompare.Compare(bRun, cRun, "priest");
         Check("[cmp] priest skill changed 3->6", priestCmp.Skills.Count == 1 && priestCmp.Skills[0].CurrentLevel == 6, priestCmp.Skills.Count);
     }
+
+    // ---- farming planner ----
+    static FarmStage Stg(string label, string diff, double hp, double gold, double exp, int waves = 10, int level = 0)
+        => new FarmStage { Label = label, Difficulty = diff, Level = level, TotalHP = hp, ExpectedGold = gold, ExpectedEXP = exp,
+                           Waves = waves, GoldPerHP = gold / hp, ExpPerHP = exp / hp };
+    static RunRecord Run(string stageId, double gold, double expPerHero, float dur, int party, int heroLevel = 0)
+    {
+        var r = new RunRecord { StageId = stageId, Duration = dur, GoldGained = gold, ExpGained = expPerHero * party };
+        for (int i = 0; i < party; i++) r.Party.Add(new CharacterSnapshot { Captured = true, Character = "h" + i, Level = heroLevel });
+        return r;
+    }
+
+    static void FarmTests()
+    {
+        // -- loader --
+        string json = "[{\"key\":2401,\"label\":\"2-4\",\"act\":2,\"stageNo\":4,\"level\":64,\"difficulty\":\"HELL\"," +
+            "\"name\":{\"zh-Hant\":\"測試\",\"en-US\":\"Test\"},\"waves\":10,\"perWave\":3,\"monsterTypes\":2,\"count\":30," +
+            "\"totalHP\":42333079,\"expectedGold\":115054,\"expectedEXP\":2244311,\"goldPerHP\":0.0027,\"expPerHP\":0.053}]";
+        var parsed = FarmDataLoader.Parse(json);
+        Check("[farm] parse count", parsed.Count == 1, parsed.Count);
+        Check("[farm] parse stageid", parsed[0].StageId == "2-4 HELL", parsed[0].StageId);
+        Check("[farm] parse gold", Near(parsed[0].ExpectedGold, 115054), parsed[0].ExpectedGold);
+        Check("[farm] parse name zh-Hant", parsed[0].LocalizedName("zh-Hant") == "測試", parsed[0].LocalizedName("zh-Hant"));
+        Check("[farm] name falls back to en", parsed[0].LocalizedName("ko-KR") == "Test", parsed[0].LocalizedName("ko-KR"));
+
+        // -- calibration + ranking (mirrors observed live data) --
+        var stages = new System.Collections.Generic.List<FarmStage>
+        {
+            Stg("2-4", "HELL", 42333079, 115054, 2244311, 10, 64),
+            Stg("2-5", "HELL", 31512877, 88032, 1720981, 12, 65),
+            Stg("3-1", "HELL", 51936891, 113190, 2235912, 11, 70),   // unmeasured -> estimated
+            Stg("1-1", "NORMAL", 560, 14, 16, 10, 1),                // trivial + far-below level (heavy retention)
+        };
+        var runs = new System.Collections.Generic.List<RunRecord>
+        {
+            Run("2-4 HELL", 319000, 6160000, 245, 3, 65),
+            Run("2-5 HELL", 243246, 4661825, 226, 3, 65),
+            Run("1-1 NORMAL", 33991, 550000, 55, 3, 65),     // mislabeled: ratio ~2428x -> must be rejected
+        };
+        Calibration cal;
+        var rows = FarmPlanner.Rank(stages, runs, out cal);
+        Check("[farm] MGold ~2.77", Near(cal.MGold, 2.768, 0.05), cal.MGold);
+        Check("[farm] MExp ~2.73", Near(cal.MExp, 2.727, 0.05), cal.MExp);
+        Check("[farm] has calibration", cal.HasData, cal.HasData);
+
+        EfficiencyRow R(string id) => rows.Find(x => x.Stage.StageId == id);
+        Check("[farm] 2-4 measured", R("2-4 HELL").Measured && R("2-4 HELL").Samples == 1, R("2-4 HELL").Measured);
+        Check("[farm] 2-4 gold/s ~1302", Near(R("2-4 HELL").GoldPerSec, 319000.0/245, 1), R("2-4 HELL").GoldPerSec);
+        Check("[farm] 2-4 exp/s ~25143", Near(R("2-4 HELL").ExpPerSec, 6160000.0/245, 1), R("2-4 HELL").ExpPerSec);
+        Check("[farm] 3-1 estimated", !R("3-1 HELL").Measured && R("3-1 HELL").ClearSec > 0, R("3-1 HELL").ClearSec);
+        Check("[farm] 3-1 gold/s positive", R("3-1 HELL").GoldPerSec > 0, R("3-1 HELL").GoldPerSec);
+        // the mislabeled 1-1 run must NOT make 1-1 a measured row
+        Check("[farm] 1-1 rejected -> estimated", !R("1-1 NORMAL").Measured, R("1-1 NORMAL").Measured);
+
+        // exp retention curve (wiki Vt): full near level, decays to 1% floor far away
+        Check("[farm] retention same level = 1", Near(FarmPlanner.ExpRetention(65, 65), 1.0), FarmPlanner.ExpRetention(65, 65));
+        Check("[farm] retention small gap = 1", Near(FarmPlanner.ExpRetention(65, 64), 1.0), FarmPlanner.ExpRetention(65, 64));
+        Check("[farm] retention far below floor", FarmPlanner.ExpRetention(65, 1) <= 0.02, FarmPlanner.ExpRetention(65, 1));
+        Check("[farm] retention 0 levels = 1 (unknown)", Near(FarmPlanner.ExpRetention(0, 50), 1.0), FarmPlanner.ExpRetention(0, 50));
+        Check("[farm] calib hero level = 65", cal.HeroLevel == 65, cal.HeroLevel);
+        // the trivial 1-1 (level 1) estimate must be crushed by retention, not float to the top for exp
+        Check("[farm] 1-1 retention crushed", R("1-1 NORMAL").ExpRetention <= 0.02, R("1-1 NORMAL").ExpRetention);
+
+        // time model fit from 2 stages with distinct (waves, HP)
+        Check("[farm] time model fitted", cal.HasTimeModel, cal.HasTimeModel);
+        Check("[farm] per-wave overhead >= 0", cal.PerWaveSec >= 0, cal.PerWaveSec);
+        // trivial low-HP NORMAL stage must NOT read as near-instant (the bug being fixed):
+        // its estimate is dominated by the per-wave overhead, so clear time is a few seconds, not ~0
+        Check("[farm] trivial stage not near-instant", R("1-1 NORMAL").ClearSec >= 1.0, R("1-1 NORMAL").ClearSec);
+
+        // -- sorting --
+        FarmPlanner.Sort(rows, FarmSortKey.ExpPerSec);
+        Check("[farm] sort exp desc", rows[0].ExpPerSec >= rows[1].ExpPerSec, rows[0].Stage.StageId);
+        FarmPlanner.Sort(rows, FarmSortKey.GoldPerSec);
+        Check("[farm] sort gold desc", rows[0].GoldPerSec >= rows[1].GoldPerSec, rows[0].Stage.StageId);
+
+        // -- no runs at all -> wiki per-HP proxy ranking, everything estimated --
+        var rows2 = FarmPlanner.Rank(stages, null, out var cal2);
+        Check("[farm] no runs -> no calibration", !cal2.HasData, cal2.HasData);
+        Check("[farm] no runs -> all estimated", rows2.TrueForAll(x => !x.Measured), "measured leaked");
+        Check("[farm] proxy gold/s = goldPerHP", Near(R2(rows2, "2-4 HELL").GoldPerSec, 115054.0/42333079, 1e-9), R2(rows2, "2-4 HELL").GoldPerSec);
+
+        BuildFingerprintTests(stages);
+    }
+
+    static RunRecord GearedRun(string stageId, double gold, double expPerHero, float dur, int level, string itemName, double affixVal, int skillLevel)
+    {
+        var r = new RunRecord { StageId = stageId, Duration = dur, GoldGained = gold, ExpGained = expPerHero };
+        var snap = new CharacterSnapshot { Captured = true, Character = "201", Level = level };
+        var g = new GearItem { Slot = "slot0", Name = itemName };
+        g.Affixes.Add(new Affix("Phys%", affixVal));
+        snap.Equipment.Add(g);
+        snap.Skills.Add(new SkillEntry("Shot", skillLevel, 1));
+        r.Party.Add(snap);
+        return r;
+    }
+
+    static void BuildFingerprintTests(System.Collections.Generic.List<FarmStage> stages)
+    {
+        // same loadout -> same signature; any gear/skill/level change -> different
+        var baseRun = GearedRun("2-4 HELL", 319000, 6160000, 245, 65, "EliteBow", 260, 5);
+        var same = GearedRun("2-5 HELL", 243246, 4661825, 226, 65, "EliteBow", 260, 5);
+        var swapItem = GearedRun("2-4 HELL", 319000, 6160000, 245, 65, "RareBow", 260, 5);
+        var reroll = GearedRun("2-4 HELL", 319000, 6160000, 245, 65, "EliteBow", 300, 5);
+        var skillUp = GearedRun("2-4 HELL", 319000, 6160000, 245, 65, "EliteBow", 260, 6);
+        string sb = FarmPlanner.BuildSignature(baseRun);
+        Check("[fp] same loadout same sig", sb == FarmPlanner.BuildSignature(same), "sig mismatch");
+        Check("[fp] item swap changes sig", sb != FarmPlanner.BuildSignature(swapItem), "swap not detected");
+        Check("[fp] affix reroll changes sig", sb != FarmPlanner.BuildSignature(reroll), "reroll not detected");
+        Check("[fp] skill level changes sig", sb != FarmPlanner.BuildSignature(skillUp), "skillup not detected");
+
+        // calibration uses only current-build runs: an old-build run is excluded
+        var runs = new System.Collections.Generic.List<RunRecord>
+        {
+            GearedRun("2-4 HELL", 999999, 9999999, 999, 65, "OldBow", 100, 1),  // old build: wildly different numbers
+            GearedRun("2-4 HELL", 319000, 6160000, 245, 65, "EliteBow", 260, 5), // current build
+            GearedRun("2-5 HELL", 243246, 4661825, 226, 65, "EliteBow", 260, 5), // current build
+        };
+        string curSig = FarmPlanner.BuildSignature(runs[1]);
+        var rows = FarmPlanner.Rank(stages, runs, out var cal, 65, curSig);
+        Check("[fp] not stale (current build present)", !cal.Stale, cal.Stale);
+        // 2-4 measured should reflect the CURRENT build (245s / 319000), not the old 999-run
+        var r24 = rows.Find(x => x.Stage.StageId == "2-4 HELL");
+        Check("[fp] measured uses current build", r24.Measured && Near(r24.ClearSec, 245, 1), r24.ClearSec);
+        Check("[fp] MGold from current build", Near(cal.MGold, 2.768, 0.1), cal.MGold);
+
+        // change to a brand-new build with no runs -> stale fallback to previous build
+        var newBuildSig = FarmPlanner.BuildSignature(GearedRun("2-4 HELL", 0, 0, 1, 65, "GodBow", 500, 9));
+        var rows3 = FarmPlanner.Rank(stages, runs, out var cal3, 65, newBuildSig);
+        Check("[fp] stale when no current-build runs", cal3.Stale, cal3.Stale);
+        Check("[fp] stale still has calibration", cal3.HasData, cal3.HasData);
+    }
+
+    static EfficiencyRow R2(System.Collections.Generic.List<EfficiencyRow> rows, string id) => rows.Find(x => x.Stage.StageId == id);
 }

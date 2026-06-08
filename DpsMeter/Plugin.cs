@@ -14,7 +14,7 @@ namespace TbhDpsMeter
     {
         public const string Guid = "tbh.dpsmeter";
         public const string Name = "TBH DPS Meter";
-        public const string Version = "0.4.1";
+        public const string Version = "0.5.0";
 
         public static DpsTracker Tracker;
         public static DamageTakenTracker TakenTracker;
@@ -49,9 +49,17 @@ namespace TbhDpsMeter
         private static ConfigEntry<string> _compareToggleKeyName;
         public static ConfigEntry<bool> DebugSnapshot;
 
+        // farming-planner panel config
+        public static ConfigEntry<float> FarmPosX;
+        public static ConfigEntry<float> FarmPosY;
+        public static ConfigEntry<float> FarmPanelWidth;
+        public static ConfigEntry<bool> FarmStartVisible;
+        private static ConfigEntry<string> _farmToggleKeyName;
+
         public static KeyCode ToggleKey = KeyCode.F9;
         public static KeyCode TakenToggleKey = KeyCode.F10;
         public static KeyCode CompareToggleKey = KeyCode.F11;
+        public static KeyCode FarmToggleKey = KeyCode.F6;
 
         private static int _dbgCount;
 
@@ -86,12 +94,20 @@ namespace TbhDpsMeter
             _compareToggleKeyName = Config.Bind("CompareUI", "ToggleKey", "F11", "Key to show/hide the stage-compare overlay (UnityEngine.KeyCode name).");
             DebugSnapshot = Config.Bind("Debug", "LogSnapshot", false, "Log character-snapshot reflection diagnostics to verify obfuscated member picks.");
 
+            FarmPosX = Config.Bind("FarmUI", "PosX", -1f, "Farming-planner overlay X (auto-saved when dragged). -1 = auto.");
+            FarmPosY = Config.Bind("FarmUI", "PosY", -1f, "Farming-planner overlay Y (auto-saved when dragged). -1 = auto.");
+            FarmPanelWidth = Config.Bind("FarmUI", "PanelWidth", 520f, "Farming-planner overlay panel width in pixels.");
+            FarmStartVisible = Config.Bind("FarmUI", "StartVisible", false, "Show the farming-planner overlay on launch.");
+            _farmToggleKeyName = Config.Bind("FarmUI", "ToggleKey", "F6", "Key to show/hide the farming-planner overlay (UnityEngine.KeyCode name).");
+
             if (!Enum.TryParse(_toggleKeyName.Value, true, out ToggleKey))
                 ToggleKey = KeyCode.F9;
             if (!Enum.TryParse(_takenToggleKeyName.Value, true, out TakenToggleKey))
                 TakenToggleKey = KeyCode.F10;
             if (!Enum.TryParse(_compareToggleKeyName.Value, true, out CompareToggleKey))
                 CompareToggleKey = KeyCode.F11;
+            if (!Enum.TryParse(_farmToggleKeyName.Value, true, out FarmToggleKey))
+                FarmToggleKey = KeyCode.F6;
 
             Tracker = new DpsTracker(WindowSeconds.Value);
             TakenTracker = new DamageTakenTracker(WindowSeconds.Value);
@@ -107,13 +123,15 @@ namespace TbhDpsMeter
                 ClassInjector.RegisterTypeInIl2Cpp<OverlayBehaviour>();
                 ClassInjector.RegisterTypeInIl2Cpp<TakenOverlayBehaviour>();
                 ClassInjector.RegisterTypeInIl2Cpp<CompareOverlayBehaviour>();
+                ClassInjector.RegisterTypeInIl2Cpp<FarmOverlayBehaviour>();
                 var go = new GameObject("TbhDpsOverlay");
                 UnityEngine.Object.DontDestroyOnLoad(go);
                 go.hideFlags = HideFlags.HideAndDontSave;
                 go.AddComponent<OverlayBehaviour>();
                 go.AddComponent<TakenOverlayBehaviour>();
                 go.AddComponent<CompareOverlayBehaviour>();
-                Logger.LogInfo("Overlays created. DPS " + ToggleKey + ", taken " + TakenToggleKey + ", compare " + CompareToggleKey + ".");
+                go.AddComponent<FarmOverlayBehaviour>();
+                Logger.LogInfo("Overlays created. DPS " + ToggleKey + ", taken " + TakenToggleKey + ", compare " + CompareToggleKey + ", farm " + FarmToggleKey + ".");
             }
             catch (Exception ex)
             {

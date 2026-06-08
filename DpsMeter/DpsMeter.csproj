@@ -3,7 +3,7 @@
     <TargetFramework>net6.0</TargetFramework>
     <AssemblyName>TBH.DpsMeter</AssemblyName>
     <Product>TBH DPS Meter</Product>
-    <Version>0.4.1</Version>
+    <Version>0.5.0</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
@@ -17,6 +17,11 @@
     <CoreDir>$(GameDir)\BepInEx\core</CoreDir>
     <InteropDir>$(GameDir)\BepInEx\interop</InteropDir>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- wiki farm dataset, shipped inside the DLL (offline; no extra files for the user) -->
+    <EmbeddedResource Include="farm_stages.json" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- BepInEx core -->

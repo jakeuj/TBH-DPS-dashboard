@@ -421,6 +421,62 @@ namespace TbhDpsMeter
         // item names live in a non-default Localization table; try gbt(table, key) candidates.
         private static readonly string[] ItemTables = { "Item", "Items", "ItemTable", "ItemName", "Equipment", "Gear" };
 
+        // ---- rewards: gold / hero exp / boxes ----
+
+        /// <summary>Gold currency key — confirmed from the save's currenySaveDatas (Key 100001 = gold).</summary>
+        public const int GoldKey = 100001;
+
+        public static long ReadGold(int key = GoldKey)
+        {
+            // ue+su.iko(key) -> sv holder; sv.iks() -> Int64 balance. Fall back to ikn(key).
+            try
+            {
+                var sv = Refl.CallStatic("ue+su", "iko", key);
+                if (sv != null) { long v = Convert.ToInt64(Refl.Call(sv, "iks") ?? 0L); if (v != 0) return v; }
+                return Convert.ToInt64(Refl.CallStatic("ue+su", "ikn", key) ?? 0L);
+            }
+            catch { return 0; }
+        }
+
+        public static double ReadHeroExp(Hero hero)
+        {
+            try
+            {
+                var cache = Refl.Get(hero, "cache");
+                if (cache == null) return double.NaN;
+                // jgx() is the decrypted accessor. Do NOT fall back to the raw backing field brqz:
+                // when jgx is momentarily null (scene transition), brqz returns the still-encrypted
+                // value (~hundreds of millions of garbage) which corrupted per-run exp deltas.
+                var v = Refl.Call(cache, "jgx");
+                return v == null ? double.NaN : Refl.ToD(v);
+            }
+            catch { return double.NaN; }
+        }
+
+        // EBoxType: NORMAL=0, BOSS=1, ACTBOSS=2
+        public static readonly int[] BoxTypes = { 0, 1, 2 };
+        public static readonly string[] BoxTypeNames = { "NORMAL", "BOSS", "ACTBOSS" };
+
+        public static int ReadBoxCount(int boxType)
+        {
+            try { return Convert.ToInt32(Refl.CallStatic("ue+td", "jej", boxType) ?? 0); }
+            catch { return 0; }
+        }
+
+        /// <summary>One-time diagnostic: confirm gold key, hero-exp getter, and box counts.</summary>
+        public static void DiagRewards(Hero hero)
+        {
+            try
+            {
+                long sv100 = 0; try { var sv = Refl.CallStatic("ue+su", "iko", GoldKey); if (sv != null) sv100 = Convert.ToInt64(Refl.Call(sv, "iks") ?? 0L); } catch { }
+                Plugin.Logger?.LogInfo($"[reward] gold key={GoldKey} iko.iks={sv100} ikn={Refl.Str(Refl.CallStatic("ue+su", "ikn", GoldKey))} ReadGold()={ReadGold()}");
+                var cache = Refl.Get(hero, "cache");
+                Plugin.Logger?.LogInfo($"[reward] heroExp jgx()={Refl.ToD(Refl.Call(cache, "jgx"))} brqz={Refl.ToD(Refl.Get(cache, "brqz"))}");
+                for (int b = 0; b < 3; b++) Plugin.Logger?.LogInfo($"[reward] box jej({b})={ReadBoxCount(b)}");
+            }
+            catch (Exception e) { Plugin.Logger?.LogWarning("DiagRewards: " + e.Message); }
+        }
+
         /// <summary>Resolve an item template key to its localized display name via ue.ti.isr(itemKey)
         /// -> ItemInfoData.NameKey -> game localizer. Returns "" if it can't be resolved.</summary>
         // verified in-game: tf.ipp() / tf.brkr return the localized item name (e.g. 精英弓);

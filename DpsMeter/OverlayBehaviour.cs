@@ -88,6 +88,7 @@ namespace TbhDpsMeter
                 Loc.MaybeRefreshAuto();
                 InputCompat.SetPanel(0, _visible, _rect);
                 PollStageState();
+                CharacterReader.TickBoxes();   // catch transient box drops before they auto-open
 
                 InputCompat.Poll();
                 if (InputCompat.TogglePressed()) _visible = !_visible;
@@ -149,12 +150,16 @@ namespace TbhDpsMeter
                 if (_resetRect.Contains(m)) { ResetMeter(); return; }
                 if (_prevRect.Contains(m)) { NavOlder(); return; }
                 if (_nextRect.Contains(m)) { NavNewer(); return; }
-                // drag from anywhere on the panel (buttons handled above)
-                if (_rect.Contains(m)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
+                // drag from anywhere on the panel (buttons handled above); claim ownership so
+                // overlapping panels don't all drag at once
+                if (_rect.Contains(m) && InputCompat.ClaimDrag(0)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
             }
 
             if (_dragging)
             {
+                if (!InputCompat.OwnsDrag(0)) { _dragging = false; }   // a panel on top stole the press
+                else
+                {
                 if (Plugin.DebugDamage != null && Plugin.DebugDamage.Value)
                     Plugin.Logger.LogInfo($"[drag] m={m} rect=({_rect.x:0},{_rect.y:0}) {InputCompat.Probe()}");
                 if (InputCompat.MouseHeld())
@@ -164,9 +169,10 @@ namespace TbhDpsMeter
                 }
                 if (InputCompat.MouseReleased())
                 {
-                    _dragging = false;
+                    _dragging = false; InputCompat.ReleaseDrag(0);
                     Plugin.PosX.Value = _rect.x;
                     Plugin.PosY.Value = _rect.y;
+                }
                 }
             }
         }
@@ -225,6 +231,8 @@ namespace TbhDpsMeter
             }
             else if (es == EStageState.MONSTERSPAWN)
             {
+                // first wave of a run: snapshot gold/exp/box for per-run reward deltas
+                if (_currentWave == 0) CharacterReader.CaptureRewardBaseline();
                 // close the previous wave's timing, then start the next
                 if (_currentWave >= 1 && _waveStartTime >= 0)
                 {
@@ -261,6 +269,7 @@ namespace TbhDpsMeter
                 foreach (var smp in _history) r.Samples.Add(smp);
                 r.WaveDurations.AddRange(_waveDurations);
                 r.Party.AddRange(CharacterReader.CaptureParty());
+                CharacterReader.FillRewards(r);   // gold/exp/box deltas vs the run baseline
 
                 // fold in the damage-taken (defense) side of the same encounter
                 var ts = Plugin.TakenTracker.GetSnapshot(Time.time);

@@ -82,6 +82,24 @@ namespace TbhDpsMeter
             _panelRect[slot] = rectGui;
         }
 
+        // Drag arbitration: when panels overlap, only one may grab a drag. The id doubles as the
+        // z-order (panels are drawn in id order, so a higher id is on top and wins the press).
+        private static int _dragOwner = -1, _dragFrame = -1;
+
+        /// <summary>Request drag ownership for this panel on the current press. Returns true only
+        /// for the topmost (highest-id) panel that asks this frame; a later higher-id caller steals
+        /// it, so lower panels must re-check OwnsDrag() before continuing a drag.</summary>
+        public static bool ClaimDrag(int id)
+        {
+            if (_pressed && _dragFrame != _polledFrame) { _dragFrame = _polledFrame; _dragOwner = -1; }
+            if (_dragOwner == id) return true;
+            if (_dragOwner == -1 || id > _dragOwner) { _dragOwner = id; return true; }
+            return false;
+        }
+
+        public static bool OwnsDrag(int id) => _dragOwner == id;
+        public static void ReleaseDrag(int id) { if (_dragOwner == id) _dragOwner = -1; }
+
         private static IntPtr _hookHandle = IntPtr.Zero;
         private static HookProc _hookProc;   // keep a managed ref alive so the GC can't collect the thunk
         private static bool _hookTried;

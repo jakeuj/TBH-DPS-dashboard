@@ -13,5 +13,7 @@
     <Compile Include="..\DpsMeter\RunSerializer.cs" />
     <Compile Include="..\DpsMeter\StageCompare.cs" />
     <Compile Include="..\DpsMeter\Json.cs" />
+    <Compile Include="..\DpsMeter\FarmData.cs" />
+    <Compile Include="..\DpsMeter\FarmPlanner.cs" />
   </ItemGroup>
 </Project>

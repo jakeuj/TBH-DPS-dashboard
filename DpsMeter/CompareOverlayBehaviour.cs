@@ -88,8 +88,16 @@ namespace TbhDpsMeter
             _stages = new List<string>(groups.Keys);
             _stages.Sort((a, b) => LastIndexOfStage(b).CompareTo(LastIndexOfStage(a)));
             _loaded = true;
-            // default to the stage of the most recent run, newest run selected
+            // default to the stage the player is CURRENTLY on (if we have runs for it);
+            // otherwise fall back to the stage of the most recent run.
             _stageIndex = 0;
+            string cur = "";
+            try { cur = CharacterReader.CurrentStageId(); } catch { }
+            if (!string.IsNullOrEmpty(cur))
+            {
+                int idx = _stages.IndexOf(cur);
+                if (idx >= 0) _stageIndex = idx;
+            }
             var g = CurrentGroup();
             _runIndex = g.Count - 1;
         }
@@ -134,14 +142,15 @@ namespace TbhDpsMeter
                 if (_pinRect.Contains(m)) { TogglePin(); return; }
                 for (int i = 0; i < _charTabs.Count; i++)
                     if (_charTabs[i].Contains(m)) { _charIndex = i; return; }
-                if (_rect.Contains(m)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
+                if (_rect.Contains(m) && InputCompat.ClaimDrag(2)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
             }
             if (_dragging)
             {
+                if (!InputCompat.OwnsDrag(2)) { _dragging = false; return; }   // a panel on top stole the press
                 if (InputCompat.MouseHeld()) { _rect.x = m.x - _dragOffset.x; _rect.y = m.y - _dragOffset.y; }
                 if (InputCompat.MouseReleased())
                 {
-                    _dragging = false;
+                    _dragging = false; InputCompat.ReleaseDrag(2);
                     Plugin.ComparePosX.Value = _rect.x;
                     Plugin.ComparePosY.Value = _rect.y;
                 }
@@ -263,6 +272,9 @@ namespace TbhDpsMeter
                 var dist = MergedShares(baseline, current);
                 int distRows = Mathf.Min(dist.Count, 4);
                 float chartH = 120f;
+                bool hasRewards = cmp.Current.GoldGained != 0 || cmp.Current.ExpGained != 0 || cmp.Current.Boxes.Count > 0
+                    || cmp.Baseline.GoldGained != 0 || cmp.Baseline.ExpGained != 0;
+                float rewardRows = hasRewards ? 6f + (cmp.Current.Boxes.Count > 0 ? 1 : 0) : 0f;
                 float leftH = lh + lh * coreRows
                     + (statRows > 0 ? lh * 0.5f + lh * statRows : 0)
                     + lh + 14 + 14 + lh * distRows
@@ -273,7 +285,8 @@ namespace TbhDpsMeter
                 foreach (var sc in cmp.Skills) if (sc.Kind == StageCompare.ChangeKind.Removed) rmSkills++;
                 foreach (var gc in cmp.Gear) if (gc.Kind == StageCompare.ChangeKind.Removed) rmGear++;
                 float rightH = lh + lh * Mathf.Max(curSkills + rmSkills, 1)
-                    + lh * 0.5f + lh + lh * 1.4f * Mathf.Max(curGear + rmGear, 1) + lh;
+                    + lh * 0.5f + lh + lh * 1.4f * Mathf.Max(curGear + rmGear, 1) + lh
+                    + (hasRewards ? lh * 0.5f + lh + lh * rewardRows : 0);   // rewards now live under gear
                 float detailH = Mathf.Max(leftH, rightH);
                 float h = Pad + lh /*header*/ + lh /*stage nav*/ + chartH + 18 + lh /*run nav*/ + (hasTabs ? lh : 0) + detailH + Pad;
                 _rect.height = h;
@@ -354,6 +367,9 @@ namespace TbhDpsMeter
                 ly = CoreRow(ly, subW, lx, rxc, "avg", cmp, "avg", true, false);
                 ly = CoreRow(ly, subW, lx, rxc, "peak", cmp, "peak", true, false);
                 ly = CoreRow(ly, subW, lx, rxc, "crit", cmp, "crit", true, false, pct: true);
+
+                // rewards (gold/exp) moved to the RIGHT column under gear — see DrawLoadout.
+
                 if (statRows > 0)
                 {
                     ly += lh * 0.5f;
@@ -588,7 +604,42 @@ namespace TbhDpsMeter
             if (cur != null) { var curIds = new HashSet<string>(); foreach (var g in cur.Equipment) curIds.Add(string.IsNullOrEmpty(g.Slot) ? g.Name : g.Slot);
                 if (bas != null) foreach (var g in bas.Equipment) if (!curIds.Contains(string.IsNullOrEmpty(g.Slot) ? g.Name : g.Slot)) { any = true; GUI.Label(new Rect(x, y, w, lh * 1.4f), $"<color=#ef6a5a>− {GearStr(g)}</color>", _tiny); y += lh * 1.4f; } }
             if (!any) { GUI.Label(new Rect(x, y, w, lh), "<color=#8a93a0>—</color>", _tiny); y += lh; }
+
+            // ---- rewards: gold/exp gained + efficiency (moved here so the left table isn't too tall) ----
+            var bR = cmp.Baseline; var cR = cmp.Current;
+            bool hasRewards = cR != null && bR != null &&
+                (cR.GoldGained != 0 || cR.ExpGained != 0 || cR.Boxes.Count > 0 || bR.GoldGained != 0 || bR.ExpGained != 0);
+            if (hasRewards)
+            {
+                y += lh * 0.5f;
+                GUI.Label(new Rect(x, y, nameW, lh), Loc.G("rewards"), _dim);
+                GUI.Label(new Rect(baseX, y, valW, lh), $"<size=10><color=#9fb4cc>{Loc.G("baseline")}</color></size>", _dim);
+                GUI.Label(new Rect(curX, y, valW, lh), $"<size=10><color=#9fb4cc>{Loc.G("this_run")}</color></size>", _dim);
+                y += lh;
+                string ps = Loc.G("per_s"), pa = "/" + Loc.G("active_time");
+                y = RewardRow(x, y, nameW, baseX, curX, valW, lh, Loc.G("gold"), Fmt(bR.GoldGained), Fmt(cR.GoldGained), DeltaColor(bR.GoldGained, cR.GoldGained, true));
+                y = RewardRow(x, y, nameW, baseX, curX, valW, lh, Loc.G("exp"), Fmt(bR.ExpGained), Fmt(cR.ExpGained), DeltaColor(bR.ExpGained, cR.ExpGained, true));
+                y = RewardRow(x, y, nameW, baseX, curX, valW, lh, Loc.G("gold") + ps, Fmt(Rate(bR.GoldGained, bR.Duration)), Fmt(Rate(cR.GoldGained, cR.Duration)), DeltaColor(Rate(bR.GoldGained, bR.Duration), Rate(cR.GoldGained, cR.Duration), true));
+                y = RewardRow(x, y, nameW, baseX, curX, valW, lh, Loc.G("exp") + ps, Fmt(Rate(bR.ExpGained, bR.Duration)), Fmt(Rate(cR.ExpGained, cR.Duration)), DeltaColor(Rate(bR.ExpGained, bR.Duration), Rate(cR.ExpGained, cR.Duration), true));
+                y = RewardRow(x, y, nameW, baseX, curX, valW, lh, Loc.G("gold") + pa, Fmt(Rate(bR.GoldGained, bR.ActiveSeconds)), Fmt(Rate(cR.GoldGained, cR.ActiveSeconds)), DeltaColor(Rate(bR.GoldGained, bR.ActiveSeconds), Rate(cR.GoldGained, cR.ActiveSeconds), true));
+                y = RewardRow(x, y, nameW, baseX, curX, valW, lh, Loc.G("exp") + pa, Fmt(Rate(bR.ExpGained, bR.ActiveSeconds)), Fmt(Rate(cR.ExpGained, cR.ActiveSeconds)), DeltaColor(Rate(bR.ExpGained, bR.ActiveSeconds), Rate(cR.ExpGained, cR.ActiveSeconds), true));
+                if (cR.Boxes.Count > 0)
+                {
+                    var sb = new System.Text.StringBuilder($"<color=#aeb6c2>{Loc.G("boxes")}</color> ");
+                    foreach (var b in cR.Boxes) sb.Append($"{Loc.Name(b.Type)}×{b.Count} ");
+                    GUI.Label(new Rect(x, y, w, lh), sb.ToString(), _tiny); y += lh;
+                }
+            }
             return y;
+        }
+
+        private float RewardRow(float x, float y, float nameW, float baseX, float curX, float valW, float lh,
+            string label, string baseStr, string curStr, string curColor)
+        {
+            GUI.Label(new Rect(x, y, nameW, lh), $"<color=#aeb6c2>{label}</color>", _tiny);
+            GUI.Label(new Rect(baseX, y, valW, lh), $"<color=#8a93a0>{baseStr}</color>", _tiny);
+            GUI.Label(new Rect(curX, y, valW, lh), $"<color={curColor}>{curStr}</color>", _tiny);
+            return y + lh;
         }
 
         private static bool GearSame(GearItem a, GearItem b)
@@ -638,6 +689,8 @@ namespace TbhDpsMeter
             sb.Append(')');
             return sb.ToString();
         }
+
+        private static double Rate(double amount, float time) => time > 0.01f ? amount / time : 0;
 
         private static string FmtStat(double v) => Math.Abs(v) < 100 ? v.ToString("0.##") : Fmt(v);
 

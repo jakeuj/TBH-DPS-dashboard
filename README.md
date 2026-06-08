@@ -2,8 +2,8 @@
 
 **English** · [日本語](README.ja.md) · [繁體中文](README.zh-Hant.md) · [简体中文](README.zh-Hans.md)
 
-In-game **DPS / damage-taken** overlay for **TaskBarHero** (TBH: Task Bar Hero),
-built as a BepInEx 6 IL2CPP plugin. Tested on game **v1.00.09** (Unity 6 / IL2CPP).
+In-game **DPS / damage-taken / stage-compare / farming-planner** overlay for **TaskBarHero**
+(TBH: Task Bar Hero), built as a BepInEx 6 IL2CPP plugin. Tested on game **v1.00.09** (Unity 6 / IL2CPP).
 UI auto-detects **English / 日本語 / 繁體中文 / 简体中文 / Español**.
 
 > ⬇️ **Players: just download the zip from [Releases](../../releases/latest) — no compiling needed.**
@@ -53,10 +53,29 @@ Stage / character / skill / item names follow the **in-game language** — set t
 
 > *Clear-time trend on top (click a point to inspect that run); below, **baseline ∣ this run** in aligned columns with green/red deltas, plus the character's gear & skills.*
 
+## Farming Planner (F6)
+Press **F6** for a **personalized** "what should I farm?" ranking of every stage — **gold/sec** and
+**exp/sec** side by side, sortable, with difficulty filter chips. Unlike a static wiki table, it is
+calibrated to **your own build**:
+- Stages you've cleared use your **real measured** numbers (green, `Real`).
+- Stages you haven't use the wiki baseline × **your personal multiplier** (learned from your runs),
+  with the clear time fit from your measured runs (`time = perHP·HP + perWave·waves`) — marked `Est.`.
+- An **EXP-retention %** column reflects the in-game level penalty (your level vs the stage level),
+  so over-/under-leveled stages are ranked honestly — higher stage ≠ always better.
+- **Build-aware:** each run is fingerprinted (gear + affixes + skills + level); only runs from your
+  **current build** count toward calibration. Change gear and it auto-detects, prompting a re-clear.
+
+A **basis** line shows what the calibration rests on (runs · stages · level · current vs old build).
+
+<img src="image/TaskBarHero_5vnzsSLfTW.png" alt="Farming planner panel" width="420">
+
+> *Every stage ranked by your real gold/sec & exp/sec; green = measured, grey = estimated from your personal multiplier; the **Keep** column is the in-game EXP-retention penalty.*
+
 ## Controls
 - **F9** — toggle the DPS panel (configurable: `ToggleKey`)
 - **F10** — toggle the damage-taken panel (configurable: `TakenUI.ToggleKey`)
 - **F11** — toggle the stage-compare panel (configurable: `CompareUI.ToggleKey`)
+- **F6** — toggle the farming planner (configurable: `FarmUI.ToggleKey`)
 - **Mouse drag** — move a panel (positions saved independently)
 - **Reset** button (top-right) zeroes the meter; **◀ ▶** browse past-stage records
 - **PageUp / PageDown** — adjust panel opacity (shared by both panels)
