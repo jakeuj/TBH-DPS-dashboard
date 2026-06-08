@@ -65,7 +65,7 @@ namespace TbhDpsMeter
             try
             {
                 InputCompat.Poll();
-                InputCompat.SetPanel(2, _visible, _rect);
+                InputCompat.SetPanel(2, _visible && !GameUiState.MenuOpen(), _rect);
                 if (InputCompat.KeyPressed(Plugin.CompareToggleKey))
                 {
                     _visible = !_visible;
@@ -234,7 +234,7 @@ namespace TbhDpsMeter
 
         void OnGUI()
         {
-            if (!_visible) return;
+            if (!_visible || GameUiState.MenuOpen()) return;   // hide while a game menu is open
             GUI.depth = -10;   // lower depth renders on top of the F9/F10 panels
             try
             {

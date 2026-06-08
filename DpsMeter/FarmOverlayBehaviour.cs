@@ -85,7 +85,7 @@ namespace TbhDpsMeter
         {
             try
             {
-                InputCompat.SetPanel(3, _visible, _rect);
+                InputCompat.SetPanel(3, _visible && !GameUiState.MenuOpen(), _rect);
                 if (InputCompat.KeyPressed(Plugin.FarmToggleKey))
                 {
                     _visible = !_visible;
@@ -197,7 +197,7 @@ namespace TbhDpsMeter
 
         void OnGUI()
         {
-            if (!_visible) return;
+            if (!_visible || GameUiState.MenuOpen()) return;   // hide while a game menu is open
             GUI.depth = -12;   // on top of F9/F10/F11
             try
             {

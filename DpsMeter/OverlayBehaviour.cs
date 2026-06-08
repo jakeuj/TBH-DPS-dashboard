@@ -86,7 +86,8 @@ namespace TbhDpsMeter
             try
             {
                 Loc.MaybeRefreshAuto();
-                InputCompat.SetPanel(0, _visible, _rect);
+                InputCompat.SetPanel(0, _visible && !GameUiState.MenuOpen(), _rect);
+                if (Plugin.DebugSnapshot != null && Plugin.DebugSnapshot.Value) GameUiState.Diag();
                 PollStageState();
                 CharacterReader.TickBoxes();   // catch transient box drops before they auto-open
 
@@ -330,7 +331,7 @@ namespace TbhDpsMeter
 
         void OnGUI()
         {
-            if (!_visible) return;
+            if (!_visible || GameUiState.MenuOpen()) return;   // hide while a game menu is open
             GUI.depth = 10;   // below the F11 compare panel
             try
             {
