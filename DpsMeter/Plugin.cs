@@ -139,6 +139,7 @@ namespace TbhDpsMeter
             }
 
 
+            SelfCheck.Run();
             Logger.LogInfo($"{Name} {Version} loaded.");
         }
 

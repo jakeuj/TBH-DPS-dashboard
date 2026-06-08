@@ -215,21 +215,25 @@ namespace TbhDpsMeter
             if (cache == null) return "";
             try
             {
-                // Current layout (post game-update): the stage label is a plain string field and the
-                // difficulty an ESTAGEDIFFICULTY enum field. Parse "N-N" from the label (the digits are
-                // language-invariant: "關卡 1-1" / "Stage 1-1" / "ステージ 1-1").
-                string actStage = ExtractActStage(Refl.Str(Refl.Get(cache, "brnj")));
-                if (string.IsNullOrEmpty(actStage))
+                // Resolve fields by TYPE, not obfuscated name — those names shift every game update
+                // (brnn↔brno↔…). The label is the string field shaped "N-N" (language-invariant:
+                // "關卡 1-1" / "Stage 1-1" / "ステージ 1-1"); the difficulty is the ESTAGEDIFFICULTY enum field.
+                string actStage = "", diff = "";
+                foreach (var p in cache.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
                 {
-                    int act = Refl.ToI(Refl.Get(cache, "brno"));
-                    int no = Refl.ToI(Refl.Get(cache, "brnp"));
-                    if (act > 0 && no > 0) actStage = act + "-" + no;
+                    if (!p.CanRead || p.GetIndexParameters().Length != 0) continue;
+                    if (string.IsNullOrEmpty(actStage) && p.PropertyType == typeof(string))
+                    {
+                        var got = ExtractActStage(p.GetValue(cache) as string);
+                        if (!string.IsNullOrEmpty(got)) actStage = got;
+                    }
+                    else if (string.IsNullOrEmpty(diff) && p.PropertyType.Name == "ESTAGEDIFFICULTY")
+                    {
+                        try { diff = p.GetValue(cache)?.ToString() ?? ""; } catch { }
+                    }
                 }
                 if (!string.IsNullOrEmpty(actStage))
-                {
-                    string diff = Refl.Str(Refl.Get(cache, "brnn"));   // ESTAGEDIFFICULTY: NORMAL/NIGHTMARE/HELL/TORMENT
                     return string.IsNullOrEmpty(diff) ? actStage : actStage + " " + diff;
-                }
                 // legacy fallback: older builds exposed becp as a StageInfoData with Act/StageNo
                 return FromStageInfo(Refl.Get(cache, "becp"));
             }
