@@ -31,6 +31,7 @@ namespace TbhDpsMeter
         private Vector2 _dragOffset;
         private bool _dragging;
         private bool _placed;
+        private float _wantX, _wantY;   // intended position; clamped non-destructively (resize-safe)
 
         private Rect _resetRect, _handleRect;
 
@@ -58,6 +59,7 @@ namespace TbhDpsMeter
             // default: bottom-left (DPS panel defaults to bottom-right)
             if (px < 0 || py < 0) { _rect.x = 24; _rect.y = Mathf.Max(24, Screen.height - 470f); }
             else { _rect.x = px; _rect.y = py; }
+            _wantX = _rect.x; _wantY = _rect.y;
             _placed = true;
         }
 
@@ -97,6 +99,7 @@ namespace TbhDpsMeter
 
         private void HandlePointer()
         {
+            if (GameUiState.MenuOpen()) { if (_dragging) { _dragging = false; InputCompat.ReleaseDrag(1); } return; }
             Vector2 m = InputCompat.MouseGuiPos();
 
             if (InputCompat.MousePressed())
@@ -118,6 +121,7 @@ namespace TbhDpsMeter
                     if (InputCompat.MouseReleased())
                     {
                         _dragging = false; InputCompat.ReleaseDrag(1);
+                        _wantX = _rect.x; _wantY = _rect.y;
                         Plugin.TakenPosX.Value = _rect.x;
                         Plugin.TakenPosY.Value = _rect.y;
                     }
@@ -201,8 +205,12 @@ namespace TbhDpsMeter
                     + 6 + 12 /*attr label*/ + barH + (attrRows > 0 ? lh * attrRows : 0)
                     + Pad;
                 _rect.height = height;
-                _rect.x = Mathf.Clamp(_rect.x, 0f, Mathf.Max(0f, Screen.width - _rect.width));
-                _rect.y = Mathf.Clamp(_rect.y, 0f, Mathf.Max(0f, Screen.height - _rect.height));
+                // clamp from the intended position so a transient window resize can't permanently move it
+                if (!_dragging)
+                {
+                    _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width));
+                    _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height));
+                }
                 GUI.Box(_rect, GUIContent.none, _box);
 
                 float cy = _rect.y + Pad;

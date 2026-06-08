@@ -17,6 +17,7 @@ namespace TbhDpsMeter
         private bool _visible;
         private float _opacity = 0.9f;
         private bool _placed;
+        private float _wantX, _wantY;   // intended position; clamped non-destructively (resize-safe)
 
         private Vector2 _dragOffset;
         private bool _dragging;
@@ -26,7 +27,7 @@ namespace TbhDpsMeter
         private GUIStyle _title, _label, _dim, _tiny, _btn, _box, _col;
         private bool _stylesReady;
 
-        private Rect _stagePrev, _stageNext, _runPrev, _runNext, _pinRect, _closeRect, _handleRect, _resetAllRect;
+        private Rect _stagePrev, _stageNext, _runPrev, _runNext, _pinRect, _delRect, _closeRect, _handleRect, _resetAllRect;
         private bool _confirmReset;
         private readonly List<Rect> _charTabs = new List<Rect>();
         private int _charIndex;
@@ -57,6 +58,7 @@ namespace TbhDpsMeter
             float px = Plugin.ComparePosX.Value, py = Plugin.ComparePosY.Value;
             if (px < 0 || py < 0) { _rect.x = Mathf.Max(24, (Screen.width - _rect.width) * 0.5f); _rect.y = 60f; }
             else { _rect.x = px; _rect.y = py; }
+            _wantX = _rect.x; _wantY = _rect.y;
             _placed = true;
         }
 
@@ -121,6 +123,7 @@ namespace TbhDpsMeter
 
         private void HandlePointer()
         {
+            if (GameUiState.MenuOpen()) { if (_dragging) { _dragging = false; InputCompat.ReleaseDrag(2); } return; }
             Vector2 m = InputCompat.MouseGuiPos();
             if (InputCompat.MousePressed())
             {
@@ -140,6 +143,7 @@ namespace TbhDpsMeter
                 if (_runPrev.Contains(m)) { _runIndex = Mathf.Max(0, _runIndex - 1); return; }
                 if (_runNext.Contains(m)) { _runIndex = Mathf.Min(CurrentGroup().Count - 1, _runIndex + 1); return; }
                 if (_pinRect.Contains(m)) { TogglePin(); return; }
+                if (_delRect.Contains(m)) { DeleteCurrentRun(); return; }
                 for (int i = 0; i < _charTabs.Count; i++)
                     if (_charTabs[i].Contains(m)) { _charIndex = i; return; }
                 if (_rect.Contains(m) && InputCompat.ClaimDrag(2)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
@@ -151,6 +155,7 @@ namespace TbhDpsMeter
                 if (InputCompat.MouseReleased())
                 {
                     _dragging = false; InputCompat.ReleaseDrag(2);
+                    _wantX = _rect.x; _wantY = _rect.y;
                     Plugin.ComparePosX.Value = _rect.x;
                     Plugin.ComparePosY.Value = _rect.y;
                 }
@@ -193,6 +198,19 @@ namespace TbhDpsMeter
             string cur = g[_runIndex].Title;
             if (_pinned.TryGetValue(stage, out var p) && p == cur) _pinned.Remove(stage);
             else _pinned[stage] = cur;
+        }
+
+        /// <summary>Delete just the currently-selected run's record (e.g. a merged/AFK outlier).</summary>
+        private void DeleteCurrentRun()
+        {
+            var g = CurrentGroup();
+            if (g.Count == 0) return;
+            _runIndex = Mathf.Clamp(_runIndex, 0, g.Count - 1);
+            if (RunStore.Delete(g[_runIndex]))
+            {
+                if (_runIndex >= g.Count - 1) _runIndex = Mathf.Max(0, _runIndex - 1);
+                Reload();
+            }
         }
 
         // ---------------- rendering ----------------
@@ -290,10 +308,13 @@ namespace TbhDpsMeter
                 float detailH = Mathf.Max(leftH, rightH);
                 float h = Pad + lh /*header*/ + lh /*stage nav*/ + chartH + 18 + lh /*run nav*/ + (hasTabs ? lh : 0) + detailH + Pad;
                 _rect.height = h;
-                // keep the WHOLE panel on-screen — Unity clips anything past the game window,
-                // so letting it go off-edge would just truncate it.
-                _rect.x = Mathf.Clamp(_rect.x, 0f, Mathf.Max(0f, Screen.width - _rect.width));
-                _rect.y = Mathf.Clamp(_rect.y, 0f, Mathf.Max(0f, Screen.height - _rect.height));
+                // keep the WHOLE panel on-screen, but clamp from the INTENDED position so a transient
+                // window resize (opening/closing a game menu) can't permanently shove it.
+                if (!_dragging)
+                {
+                    _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width));
+                    _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height));
+                }
                 GUI.Box(_rect, GUIContent.none, _box);
 
                 float cy = _rect.y + Pad;
@@ -328,6 +349,9 @@ namespace TbhDpsMeter
                 GUI.Label(new Rect(ix + 62, cy, iw - 200, lh), $"<size=11>{current.Title}  {_runIndex + 1}/{group.Count}</size>", _dim);
                 _pinRect = new Rect(x + w - Pad - 64, cy - 1, 64, lh);
                 GUI.Button(_pinRect, curPinned ? "📌" + Loc.G("pinned") : Loc.G("set_baseline"), _btn);
+                // delete just this run (e.g. an AFK/merged record); left of the pin button
+                _delRect = new Rect(x + w - Pad - 64 - 30, cy - 1, 26, lh);
+                GUI.Button(_delRect, "🗑", _btn);
                 cy += lh;
 
                 // character tabs

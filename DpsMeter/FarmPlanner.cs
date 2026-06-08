@@ -11,6 +11,7 @@ namespace TbhDpsMeter
         public double ExpPerSec;   // per hero (already includes the exp-retention factor)
         public double ClearSec;    // measured median, or estimated from clear rate
         public bool Measured;      // true = from the player's runs; false = estimated
+        public bool MeasuredFromOldBuild;  // measured, but the data is from a different (older) gear build
         public int Samples;        // number of trusted measured runs backing this row
         public double ExpRetention = 1;  // 0..1 exp kept at this stage's level for the player's level
     }
@@ -72,11 +73,15 @@ namespace TbhDpsMeter
             public int StageLevel;     // wiki stage level (for retention)
             public int HeroLevel;      // party level at the time of the run
             public bool ExpValid;
+            public string Sig;         // build signature of the run
+            public bool Cur;           // true if this run is the current build
         }
 
-        /// <summary>A stable fingerprint of a run's party loadout (gear names + affixes + skill levels +
-        /// character level). Runs with the same signature are the same build, so only matching runs are
-        /// used to calibrate — a gear/skill change yields a new signature and old runs stop counting.</summary>
+        /// <summary>A stable fingerprint of a run's party GEAR loadout (equipped items + their affixes,
+        /// per hero). Runs with the same signature are the same build, so only matching runs calibrate —
+        /// swapping/re-rolling gear yields a new signature and old runs stop counting.
+        /// Deliberately ignores character level AND skill level: those creep up during normal play and
+        /// must NOT reset the baseline (level is handled separately by the exp-retention model).</summary>
         public static string BuildSignature(RunRecord r)
         {
             if (r == null || r.Party == null || r.Party.Count == 0) return "";
@@ -86,59 +91,28 @@ namespace TbhDpsMeter
             foreach (var h in heroes)
             {
                 if (h == null) continue;
-                sb.Append('H').Append(h.Character).Append('@').Append(h.Level).Append(';');
+                sb.Append('H').Append(h.Character).Append(';');
                 var gear = new List<GearItem>(h.Equipment);
                 gear.Sort((x, y) => string.CompareOrdinal(x?.Slot ?? "", y?.Slot ?? ""));
                 foreach (var g in gear)
                 {
                     if (g == null) continue;
-                    sb.Append(g.Slot).Append('=').Append(g.ItemKey != 0 ? ("k" + g.ItemKey) : g.Name);
+                    // Use the item NAME for identity, not ItemKey: ItemKey is transient (not serialized),
+                    // so a live capture has it but loaded runs don't — keying on it would make the live
+                    // signature never match saved runs (everything reads as "old build").
+                    sb.Append(g.Slot).Append('=').Append(!string.IsNullOrEmpty(g.Name) ? g.Name : ("k" + g.ItemKey));
                     var af = new List<Affix>(g.Affixes);
                     af.Sort((x, y) => string.CompareOrdinal(x.Name ?? "", y.Name ?? ""));
                     foreach (var a in af) sb.Append('[').Append(a.Name).Append(System.Math.Round(a.Value)).Append(']');
                     sb.Append(',');
                 }
+                // skills: identity only (which skills are equipped), NOT their levels
                 var sk = new List<SkillEntry>(h.Skills);
                 sk.Sort((x, y) => x.Key != y.Key ? x.Key.CompareTo(y.Key) : string.CompareOrdinal(x.Name ?? "", y.Name ?? ""));
-                foreach (var s in sk) sb.Append('s').Append(s.Key != 0 ? ("k" + s.Key) : s.Name).Append('L').Append(s.Level).Append(',');
+                foreach (var s in sk) sb.Append('s').Append(s.Key != 0 ? ("k" + s.Key) : s.Name).Append(',');
                 sb.Append('|');
             }
             return sb.ToString();
-        }
-
-        /// <summary>Choose which runs to calibrate from based on build signatures. Prefer runs matching
-        /// <paramref name="currentSig"/>; if none match (e.g. just changed gear and haven't re-cleared),
-        /// fall back to the most-recent build's runs and set <paramref name="stale"/>. Runs with no
-        /// snapshot (empty signature, legacy records) are only used when no signed runs exist at all.</summary>
-        private static List<RunRecord> SelectBuildRuns(List<RunRecord> all, string currentSig, out bool stale)
-        {
-            stale = false;
-            if (all.Count == 0) return all;
-
-            // signature per run (cache alongside)
-            var sigs = new List<string>(all.Count);
-            string newestSigned = null;
-            foreach (var r in all)
-            {
-                string sg = BuildSignature(r);
-                sigs.Add(sg);
-                if (!string.IsNullOrEmpty(sg)) newestSigned = sg;   // last non-empty wins (runs are oldest→newest)
-            }
-
-            // no fingerprintable runs at all -> use everything (legacy behavior)
-            if (newestSigned == null) return all;
-
-            string target = !string.IsNullOrEmpty(currentSig) ? currentSig : newestSigned;
-            var match = new List<RunRecord>();
-            for (int i = 0; i < all.Count; i++) if (sigs[i] == target) match.Add(all[i]);
-
-            if (match.Count > 0) return match;   // current build has runs (or we defaulted to newest)
-
-            // current build has zero runs -> fall back to the most-recent build, flag stale
-            stale = true;
-            var fb = new List<RunRecord>();
-            for (int i = 0; i < all.Count; i++) if (sigs[i] == newestSigned) fb.Add(all[i]);
-            return fb;
         }
 
         /// <summary>EXP retention 0..1 at a stage level for a hero level — the wiki's "保留經驗值" curve.
@@ -175,91 +149,125 @@ namespace TbhDpsMeter
 
             var allRuns = new List<RunRecord>(runs ?? new List<RunRecord>());
 
-            // pick which build's runs to calibrate from (see SelectBuildRuns): prefer the current build,
-            // else the most recent build (flagged stale so the UI can prompt a re-clear).
-            bool stale;
-            var selected = SelectBuildRuns(allRuns, currentBuildSig, out stale);
+            // current build signature: caller-provided live loadout, else the newest run that has one
+            string currentSig = currentBuildSig;
+            if (string.IsNullOrEmpty(currentSig))
+                foreach (var r in allRuns) { var sg = BuildSignature(r); if (!string.IsNullOrEmpty(sg)) currentSig = sg; }
 
-            // 1. collect well-formed run stats matched to a known stage
+            // 1. collect well-formed run stats from ALL runs (every build), tagged by build signature
             var stats = new List<RunStat>();
+            foreach (var r in allRuns)
             {
-                foreach (var r in selected)
+                if (r == null || string.IsNullOrEmpty(r.StageId) || r.Duration <= 0.01) continue;
+                if (!byId.TryGetValue(r.StageId, out var st)) continue;
+                if (st.ExpectedGold <= 0 || r.GoldGained <= 0) continue;   // gold must be sane
+                int party = r.Party != null ? r.Party.Count : 0;
+                bool expValid = party > 0 && st.ExpectedEXP > 0 && r.ExpGained > 0;
+                double expPerHero = expValid ? r.ExpGained / party : 0;
+                int heroLevel = r.RepLevel > 0 ? r.RepLevel : fallbackHeroLevel;
+                double ret = ExpRetention(heroLevel, st.Level);
+                double pureExpRatio = (expValid && ret > 0) ? (expPerHero / st.ExpectedEXP) / ret : 0;
+                string sig = BuildSignature(r);
+                stats.Add(new RunStat
                 {
-                    if (r == null || string.IsNullOrEmpty(r.StageId) || r.Duration <= 0.01) continue;
-                    if (!byId.TryGetValue(r.StageId, out var st)) continue;
-                    if (st.ExpectedGold <= 0 || r.GoldGained <= 0) continue;   // gold must be sane
-                    int party = r.Party != null ? r.Party.Count : 0;
-                    bool expValid = party > 0 && st.ExpectedEXP > 0 && r.ExpGained > 0;
-                    double expPerHero = expValid ? r.ExpGained / party : 0;
-                    int heroLevel = r.RepLevel > 0 ? r.RepLevel : fallbackHeroLevel;
-                    // de-retention the measured exp so the learned multiplier is the pure personal bonus:
-                    // measured = expectedEXP × bonus × retention(heroLv, thisStageLv)
-                    double ret = ExpRetention(heroLevel, st.Level);
-                    double pureExpRatio = (expValid && ret > 0) ? (expPerHero / st.ExpectedEXP) / ret : 0;
-                    stats.Add(new RunStat
-                    {
-                        StageId = r.StageId,
-                        GoldRatio = r.GoldGained / st.ExpectedGold,
-                        ExpRatio = pureExpRatio,
-                        HpRate = r.Duration > 0 ? st.TotalHP / r.Duration : 0,
-                        GoldPerSec = r.GoldGained / r.Duration,
-                        ExpPerSec = expValid ? expPerHero / r.Duration : 0,
-                        Duration = r.Duration,
-                        Waves = st.Waves,
-                        Hp = st.TotalHP,
-                        StageLevel = st.Level,
-                        HeroLevel = heroLevel,
-                        ExpValid = expValid,
-                    });
-                }
+                    StageId = r.StageId,
+                    GoldRatio = r.GoldGained / st.ExpectedGold,
+                    ExpRatio = pureExpRatio,
+                    HpRate = r.Duration > 0 ? st.TotalHP / r.Duration : 0,
+                    GoldPerSec = r.GoldGained / r.Duration,
+                    ExpPerSec = expValid ? expPerHero / r.Duration : 0,
+                    Duration = r.Duration,
+                    Waves = st.Waves,
+                    Hp = st.TotalHP,
+                    StageLevel = st.Level,
+                    HeroLevel = heroLevel,
+                    ExpValid = expValid,
+                    Sig = sig,
+                    Cur = !string.IsNullOrEmpty(currentSig) ? sig == currentSig : true,
+                });
             }
 
-            // 2. robust medians, then reject gold-ratio outliers (mislabeled runs)
+            // 2. reject gold-ratio outliers (mislabeled runs), keeping all builds
             calib = new Calibration();
             var trusted = new List<RunStat>();
-            calib.Stale = stale && stats.Count > 0;   // only meaningful when we actually have (old) data
             if (stats.Count > 0)
             {
                 double medGold = Median(Select(stats, s => s.GoldRatio));
                 foreach (var s in stats)
                     if (medGold <= 0 || (s.GoldRatio <= medGold * OutlierFactor && s.GoldRatio >= medGold / OutlierFactor))
                         trusted.Add(s);
-
-                if (trusted.Count > 0)
-                {
-                    calib.MGold = Median(Select(trusted, s => s.GoldRatio));
-                    var expRatios = new List<double>();
-                    foreach (var s in trusted) if (s.ExpValid) expRatios.Add(s.ExpRatio);
-                    calib.MExp = expRatios.Count > 0 ? Median(expRatios) : calib.MGold;  // exp tracks gold
-                    calib.ClearRate = Median(Select(trusted, s => s.HpRate));
-                    calib.HasData = calib.ClearRate > 0;
-                    calib.HeroLevel = fallbackHeroLevel;
-                    foreach (var s in trusted) if (s.HeroLevel > calib.HeroLevel) calib.HeroLevel = s.HeroLevel;
-                    FitTimeModel(trusted, calib);
-                }
             }
 
-            // 3. group trusted runs by stage for the measured rows
-            var trustedByStage = new Dictionary<string, List<RunStat>>();
-            foreach (var s in trusted)
+            // calibration prefers current-build runs; if none, fall back to the most-recent build (stale)
+            var calibRuns = new List<RunStat>();
+            foreach (var s in trusted) if (s.Cur) calibRuns.Add(s);
+            if (calibRuns.Count == 0 && trusted.Count > 0)
             {
-                if (!trustedByStage.TryGetValue(s.StageId, out var l)) { l = new List<RunStat>(); trustedByStage[s.StageId] = l; }
+                calib.Stale = true;
+                string newest = null;
+                foreach (var r in allRuns) { var sg = BuildSignature(r); if (!string.IsNullOrEmpty(sg)) newest = sg; }
+                foreach (var s in trusted) if (s.Sig == newest) calibRuns.Add(s);
+                if (calibRuns.Count == 0) calibRuns.AddRange(trusted);
+            }
+            if (calibRuns.Count > 0)
+            {
+                calib.MGold = Median(Select(calibRuns, s => s.GoldRatio));
+                var expRatios = new List<double>();
+                foreach (var s in calibRuns) if (s.ExpValid) expRatios.Add(s.ExpRatio);
+                calib.MExp = expRatios.Count > 0 ? Median(expRatios) : calib.MGold;
+                calib.HasData = true;
+                calib.HeroLevel = fallbackHeroLevel;
+                foreach (var s in calibRuns) if (s.HeroLevel > calib.HeroLevel) calib.HeroLevel = s.HeroLevel;
+            }
+
+            // time model + clear rate from the calibration build's per-stage fastest clears
+            var calibByStage = new Dictionary<string, List<RunStat>>();
+            foreach (var s in calibRuns)
+            {
+                if (!calibByStage.TryGetValue(s.StageId, out var l)) { l = new List<RunStat>(); calibByStage[s.StageId] = l; }
                 l.Add(s);
             }
-            calib.TrustedRuns = trusted.Count;
-            calib.MeasuredStages = trustedByStage.Count;
+            var reps = new List<RunStat>();
+            foreach (var kv in calibByStage)
+            {
+                RunStat best = kv.Value[0];
+                foreach (var s in kv.Value) if (s.Duration < best.Duration) best = s;
+                reps.Add(best);
+            }
+            if (reps.Count > 0)
+            {
+                calib.ClearRate = Median(Select(reps, s => s.HpRate));
+                FitTimeModel(reps, calib);
+            }
+            calib.TrustedRuns = calibRuns.Count;
+            calib.MeasuredStages = calibByStage.Count;
 
-            // 4. build a row per stage
+            // 3. group ALL trusted runs by stage, split into current-build and other-build
+            var curByStage = new Dictionary<string, List<RunStat>>();
+            var oldByStage = new Dictionary<string, List<RunStat>>();
+            foreach (var s in trusted)
+            {
+                var map = s.Cur ? curByStage : oldByStage;
+                if (!map.TryGetValue(s.StageId, out var l)) { l = new List<RunStat>(); map[s.StageId] = l; }
+                l.Add(s);
+            }
+
+            // 4. build a row per stage: current-build measured > old-build measured (flagged) > estimated
             var rows = new List<EfficiencyRow>();
             foreach (var st in stageList)
             {
                 var row = new EfficiencyRow { Stage = st };
                 row.ExpRetention = ExpRetention(calib.HeroLevel, st.Level);
-                if (trustedByStage.TryGetValue(st.StageId, out var rs) && rs.Count > 0)
+                bool haveCur = curByStage.TryGetValue(st.StageId, out var rs) && rs.Count > 0;
+                bool haveOld = !haveCur && oldByStage.TryGetValue(st.StageId, out rs) && rs.Count > 0;
+                if (haveCur || haveOld)
                 {
                     row.Measured = true;
+                    row.MeasuredFromOldBuild = haveOld;
                     row.Samples = rs.Count;
-                    row.ClearSec = Median(Select(rs, s => s.Duration));
+                    double minDur = rs[0].Duration;
+                    foreach (var s in rs) if (s.Duration < minDur) minDur = s.Duration;
+                    row.ClearSec = minDur;   // fastest clean clear
                     row.GoldPerSec = Median(Select(rs, s => s.GoldPerSec));
                     var eps = new List<double>();
                     foreach (var s in rs) if (s.ExpValid) eps.Add(s.ExpPerSec);

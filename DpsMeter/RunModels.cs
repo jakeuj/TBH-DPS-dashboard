@@ -117,6 +117,9 @@ namespace TbhDpsMeter
         /// <summary>Treasure boxes obtained this run, by type/rarity.</summary>
         public readonly List<BoxDrop> Boxes = new List<BoxDrop>();
 
+        /// <summary>Backing file path (set on load; not serialized) so a single run can be deleted.</summary>
+        public string SourceFile;
+
         /// <summary>Representative party level (max captured level) for the exp-retention model. 0 = unknown.</summary>
         public int RepLevel
         {

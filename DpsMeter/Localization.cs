@@ -164,6 +164,7 @@ namespace TbhDpsMeter
             { "source_col",     new[] { "來源", "Source", "ソース", "来源", "Fuente" } },
             { "src_measured",   new[] { "實測", "Real", "実測", "实测", "Real" } },
             { "src_estimated",  new[] { "估", "Est.", "推定", "估", "Est." } },
+            { "src_old",        new[] { "舊", "Old", "旧", "旧", "Viejo" } },
             { "farm_note",      new[] { "實測為主，未打過用 wiki×個人倍率推估", "Measured first; unplayed = wiki × your multiplier",
                                         "実測優先・未挑戦はwiki×個人倍率で推定", "实测为主，未打过用 wiki×个人倍率推估",
                                         "Real primero; no jugadas = wiki × tu multiplicador" } },

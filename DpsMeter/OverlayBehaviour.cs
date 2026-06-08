@@ -32,6 +32,7 @@ namespace TbhDpsMeter
         private Vector2 _dragOffset;
         private bool _dragging;
         private bool _placed;
+        private float _wantX, _wantY;   // intended position; clamped non-destructively so window resizes don't move the panel
 
         // clickable regions (set during OnGUI, hit-tested in Update via InputCompat)
         private Rect _resetRect, _prevRect, _nextRect, _handleRect;
@@ -78,6 +79,7 @@ namespace TbhDpsMeter
             float px = Plugin.PosX.Value, py = Plugin.PosY.Value;
             if (px < 0 || py < 0) { _rect.x = Mathf.Max(24, Screen.width - _rect.width - 24); _rect.y = Mathf.Max(24, Screen.height - 470f); } // bottom-right
             else { _rect.x = px; _rect.y = py; }
+            _wantX = _rect.x; _wantY = _rect.y;
             _placed = true;
         }
 
@@ -144,6 +146,9 @@ namespace TbhDpsMeter
         // Input System). Hit-tests the rects recorded by OnGUI.
         private void HandlePointer()
         {
+            // while a game menu is open the panel is hidden — ignore the mouse so interacting with the
+            // game's own UI can't accidentally grab/drag the (invisible) panel.
+            if (GameUiState.MenuOpen()) { if (_dragging) { _dragging = false; InputCompat.ReleaseDrag(0); } return; }
             Vector2 m = InputCompat.MouseGuiPos();
 
             if (InputCompat.MousePressed())
@@ -171,6 +176,7 @@ namespace TbhDpsMeter
                 if (InputCompat.MouseReleased())
                 {
                     _dragging = false; InputCompat.ReleaseDrag(0);
+                    _wantX = _rect.x; _wantY = _rect.y;
                     Plugin.PosX.Value = _rect.x;
                     Plugin.PosY.Value = _rect.y;
                 }
@@ -232,8 +238,18 @@ namespace TbhDpsMeter
             }
             else if (es == EStageState.MONSTERSPAWN)
             {
-                // first wave of a run: snapshot gold/exp/box for per-run reward deltas
-                if (_currentWave == 0) CharacterReader.CaptureRewardBaseline();
+                // first wave of a run: snapshot rewards AND restart timing from the real stage start, so
+                // the clear time excludes town/navigation time between stages (fixes the inflated first
+                // run after switching stages). Subsequent stages re-zero here regardless of the prior NONE.
+                if (_currentWave == 0)
+                {
+                    CharacterReader.CaptureRewardBaseline();
+                    Plugin.Tracker.StartEncounter(Time.time);
+                    Plugin.TakenTracker.StartEncounter(Time.time);
+                    _history.Clear();
+                    _activeSec = _idleSec = 0f;
+                    _prevDmgTime = -1f;
+                }
                 // close the previous wave's timing, then start the next
                 if (_currentWave >= 1 && _waveStartTime >= 0)
                 {
@@ -380,10 +396,13 @@ namespace TbhDpsMeter
                     + 6 + graphH + 14 /*graph + x labels*/ + 6 + barH
                     + (legendRows > 0 ? lh * legendRows : 0) + Pad;
                 _rect.height = height;
-                // keep the panel on-screen (resolution can change between sessions,
-                // which would otherwise leave a saved position off the bottom edge)
-                _rect.x = Mathf.Clamp(_rect.x, 0f, Mathf.Max(0f, Screen.width - _rect.width));
-                _rect.y = Mathf.Clamp(_rect.y, 0f, Mathf.Max(0f, Screen.height - _rect.height));
+                // keep the panel on-screen, but clamp from the INTENDED position (not the live one) so a
+                // transient window resize (e.g. opening/closing a game menu) can't permanently shove it.
+                if (!_dragging)
+                {
+                    _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width));
+                    _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height));
+                }
                 GUI.Box(_rect, GUIContent.none, _box);
 
                 float cy = _rect.y + Pad;

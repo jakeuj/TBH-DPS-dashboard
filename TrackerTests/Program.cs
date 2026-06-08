@@ -428,6 +428,17 @@ class Tests
         Check("[farm] no runs -> all estimated", rows2.TrueForAll(x => !x.Measured), "measured leaked");
         Check("[farm] proxy gold/s = goldPerHP", Near(R2(rows2, "2-4 HELL").GoldPerSec, 115054.0/42333079, 1e-9), R2(rows2, "2-4 HELL").GoldPerSec);
 
+        // fastest-clear representative: a merged/AFK long run must NOT inflate the shown clear time
+        var mr = new System.Collections.Generic.List<RunRecord>
+        {
+            Run("2-4 HELL", 319000, 6160000, 245, 3, 65),
+            Run("2-4 HELL", 638000, 12320000, 490, 3, 65),   // didn't reset: 2x time & 2x reward
+        };
+        var rowsM = FarmPlanner.Rank(stages, mr, out _, 65);
+        var r24m = rowsM.Find(x => x.Stage.StageId == "2-4 HELL");
+        Check("[farm] clear time = fastest, not median", Near(r24m.ClearSec, 245, 1), r24m.ClearSec);
+        Check("[farm] merged run rate still ~1302", Near(r24m.GoldPerSec, 319000.0/245, 1), r24m.GoldPerSec);
+
         BuildFingerprintTests(stages);
     }
 
@@ -445,17 +456,19 @@ class Tests
 
     static void BuildFingerprintTests(System.Collections.Generic.List<FarmStage> stages)
     {
-        // same loadout -> same signature; any gear/skill/level change -> different
+        // gear identity drives the signature; routine leveling (char level, skill level) must NOT
         var baseRun = GearedRun("2-4 HELL", 319000, 6160000, 245, 65, "EliteBow", 260, 5);
         var same = GearedRun("2-5 HELL", 243246, 4661825, 226, 65, "EliteBow", 260, 5);
         var swapItem = GearedRun("2-4 HELL", 319000, 6160000, 245, 65, "RareBow", 260, 5);
         var reroll = GearedRun("2-4 HELL", 319000, 6160000, 245, 65, "EliteBow", 300, 5);
         var skillUp = GearedRun("2-4 HELL", 319000, 6160000, 245, 65, "EliteBow", 260, 6);
+        var charLvUp = GearedRun("2-4 HELL", 319000, 6160000, 245, 70, "EliteBow", 260, 5);   // leveled 65->70
         string sb = FarmPlanner.BuildSignature(baseRun);
         Check("[fp] same loadout same sig", sb == FarmPlanner.BuildSignature(same), "sig mismatch");
         Check("[fp] item swap changes sig", sb != FarmPlanner.BuildSignature(swapItem), "swap not detected");
         Check("[fp] affix reroll changes sig", sb != FarmPlanner.BuildSignature(reroll), "reroll not detected");
-        Check("[fp] skill level changes sig", sb != FarmPlanner.BuildSignature(skillUp), "skillup not detected");
+        Check("[fp] skill level-up keeps sig (leveling)", sb == FarmPlanner.BuildSignature(skillUp), "skillup wrongly reset");
+        Check("[fp] char level-up keeps sig (leveling)", sb == FarmPlanner.BuildSignature(charLvUp), "charlvup wrongly reset");
 
         // calibration uses only current-build runs: an old-build run is excluded
         var runs = new System.Collections.Generic.List<RunRecord>
@@ -477,6 +490,9 @@ class Tests
         var rows3 = FarmPlanner.Rank(stages, runs, out var cal3, 65, newBuildSig);
         Check("[fp] stale when no current-build runs", cal3.Stale, cal3.Stale);
         Check("[fp] stale still has calibration", cal3.HasData, cal3.HasData);
+        // old-build measured data is still SHOWN (not dropped to estimated), flagged as old build
+        var r24old = rows3.Find(x => x.Stage.StageId == "2-4 HELL");
+        Check("[fp] old-build data shown as measured", r24old.Measured && r24old.MeasuredFromOldBuild, r24old.Measured + "/" + r24old.MeasuredFromOldBuild);
     }
 
     static EfficiencyRow R2(System.Collections.Generic.List<EfficiencyRow> rows, string id) => rows.Find(x => x.Stage.StageId == id);

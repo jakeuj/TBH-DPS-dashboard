@@ -53,6 +53,19 @@ namespace TbhDpsMeter
             return n;
         }
 
+        /// <summary>Delete a single run by its backing file. Returns true if removed.</summary>
+        public static bool Delete(RunRecord r)
+        {
+            try
+            {
+                if (r == null || string.IsNullOrEmpty(r.SourceFile) || !File.Exists(r.SourceFile)) return false;
+                File.Delete(r.SourceFile);
+                Version++;
+                return true;
+            }
+            catch (Exception e) { Plugin.Logger?.LogError("RunStore.Delete: " + e.Message); return false; }
+        }
+
         /// <summary>Returns runs oldest..newest.</summary>
         public static List<RunRecord> LoadAll()
         {
@@ -64,7 +77,7 @@ namespace TbhDpsMeter
                 files.Sort();
                 foreach (var f in files)
                 {
-                    try { list.Add(RunSerializer.Deserialize(File.ReadAllLines(f))); }
+                    try { var rec = RunSerializer.Deserialize(File.ReadAllLines(f)); rec.SourceFile = f; list.Add(rec); }
                     catch (Exception e) { Plugin.Logger?.LogError("RunStore.Load one: " + e.Message); }
                 }
             }

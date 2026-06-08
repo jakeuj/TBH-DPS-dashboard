@@ -44,6 +44,7 @@ namespace TbhDpsMeter
         private Rect _rect = new Rect(60, 60, 480, 0);
         private bool _visible;
         private bool _placed;
+        private float _wantX, _wantY;   // intended position; clamped non-destructively (resize-safe)
         private Vector2 _dragOffset;
         private bool _dragging;
 
@@ -78,6 +79,7 @@ namespace TbhDpsMeter
             float px = Plugin.FarmPosX.Value, py = Plugin.FarmPosY.Value;
             if (px < 0 || py < 0) { _rect.x = Mathf.Max(24, (Screen.width - _rect.width) * 0.5f); _rect.y = 60f; }
             else { _rect.x = px; _rect.y = py; }
+            _wantX = _rect.x; _wantY = _rect.y;
             _placed = true;
         }
 
@@ -124,6 +126,7 @@ namespace TbhDpsMeter
 
         private void HandlePointer()
         {
+            if (GameUiState.MenuOpen()) { if (_dragging) { _dragging = false; InputCompat.ReleaseDrag(3); } return; }
             Vector2 m = InputCompat.MouseGuiPos();
             if (InputCompat.MousePressed())
             {
@@ -143,6 +146,7 @@ namespace TbhDpsMeter
                 if (InputCompat.MouseReleased())
                 {
                     _dragging = false;
+                    _wantX = _rect.x; _wantY = _rect.y;
                     Plugin.FarmPosX.Value = _rect.x;
                     Plugin.FarmPosY.Value = _rect.y;
                 }
@@ -220,8 +224,11 @@ namespace TbhDpsMeter
                 float bodyH = lh /*title*/ + lh /*note*/ + (_calib.HasData ? lh : 0) /*basis*/ + lh /*chips*/ + lh /*header*/ + lh * Mathf.Max(shown, 1) + lh /*footer*/;
                 float h = Pad + bodyH + Pad;
                 _rect.height = h;
-                _rect.x = Mathf.Clamp(_rect.x, 0f, Mathf.Max(0f, Screen.width - _rect.width));
-                _rect.y = Mathf.Clamp(_rect.y, 0f, Mathf.Max(0f, Screen.height - _rect.height));
+                if (!_dragging)
+                {
+                    _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width));
+                    _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height));
+                }
                 x = _rect.x; ix = x + Pad;
                 GUI.Box(_rect, GUIContent.none, _box);
 
@@ -317,7 +324,8 @@ namespace TbhDpsMeter
                     DrawBar(xGold, cy, wGold, lh, r.GoldPerSec, maxGold, r.Measured ? new Color(0.95f, 0.78f, 0.30f, 0.55f) : new Color(0.80f, 0.66f, 0.28f, 0.28f));
                     DrawBar(xExp, cy, wExp, lh, r.ExpPerSec, maxExp, r.Measured ? new Color(0.37f, 0.82f, 0.78f, 0.55f) : new Color(0.34f, 0.66f, 0.64f, 0.28f));
 
-                    string mc = r.Measured ? "#eaf3ee" : "#cdd5df";
+                    // bright = current-build measured; amber = measured but from old gear; dim = estimated
+                    string mc = r.MeasuredFromOldBuild ? "#e7c25a" : (r.Measured ? "#eaf3ee" : "#cdd5df");
                     GUI.Label(new Rect(xGold, cy, wGold - CG, lh), $"<color={mc}>{FmtNum(r.GoldPerSec)}</color>", _col);
                     GUI.Label(new Rect(xExp, cy, wExp - CG, lh), $"<color={mc}>{FmtNum(r.ExpPerSec)}</color>", _col);
                     // exp retention %: only meaningful below 100%, colored amber<100% / red<50%
@@ -326,7 +334,8 @@ namespace TbhDpsMeter
                         : $"<color={(pct < 50 ? "#ef6a5a" : "#e7c25a")}>{pct:0}%</color>";
                     GUI.Label(new Rect(xRet, cy, wRet - CG, lh), $"<size=11>{retStr}</size>", _col);
                     GUI.Label(new Rect(xClear, cy, wClear - CG, lh), $"<color=#aeb6c2>{(r.ClearSec > 0 ? FmtTime(r.ClearSec) : "—")}</color>", _col);
-                    string src = r.Measured ? $"<color=#5fd07c>{Loc.G("src_measured")}</color>" : $"<color=#8a93a0>{Loc.G("src_estimated")}</color>";
+                    string src = r.MeasuredFromOldBuild ? $"<color=#e7c25a>{Loc.G("src_old")}</color>"
+                        : (r.Measured ? $"<color=#5fd07c>{Loc.G("src_measured")}</color>" : $"<color=#8a93a0>{Loc.G("src_estimated")}</color>");
                     GUI.Label(new Rect(xSrc + 2, cy, wSrc - 2, lh), $"<size=10>{src}</size>", _tiny);
                     cy += lh;
                 }
