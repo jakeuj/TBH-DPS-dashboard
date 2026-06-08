@@ -204,69 +204,43 @@ namespace TbhDpsMeter
     {
         private static object _lastStageCache;
 
-        private static string _liveMember;   // cached StageManager member that yields the stage id
-
-        private static bool _stageDumped;
-
         public static string ReadStageId(StageManager stage)
         {
-            // preferred: the StageCache captured at stage entry (UI_Stage.hqk)
-            string id = FromStageCache(_lastStageCache);
-            if (!string.IsNullOrEmpty(id)) return id;
-            // fallback: the entry hook doesn't fire when you replay/farm a stage, so read the
-            // stage straight off the live StageManager instead (auto-discovered + cached member).
-            id = FromLiveStage(stage);
-            if (string.IsNullOrEmpty(id)) DumpStageOnce(stage);
-            return id;
+            // the StageCache captured at stage entry (UI_Stage.hqk)
+            return FromStageCache(_lastStageCache);
         }
 
-        /// <summary>One-time diagnostic: log the StageManager's members + value types so we can
-        /// find where the current-stage info actually lives.</summary>
-        private static void DumpStageOnce(object stage)
+        private static string FromStageCache(object cache)
         {
-            if (_stageDumped) return;
-            _stageDumped = true;
+            if (cache == null) return "";
             try
             {
-                Plugin.Logger?.LogInfo($"[stage dump] lastCache={(_lastStageCache != null)} stage={(stage != null ? stage.GetType().FullName : "null")}");
-                if (stage == null) return;
-                const BindingFlags F = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-                var t = stage.GetType();
-                foreach (var f in t.GetFields(F))
+                // Current layout (post game-update): the stage label is a plain string field and the
+                // difficulty an ESTAGEDIFFICULTY enum field. Parse "N-N" from the label (the digits are
+                // language-invariant: "關卡 1-1" / "Stage 1-1" / "ステージ 1-1").
+                string actStage = ExtractActStage(Refl.Str(Refl.Get(cache, "brnj")));
+                if (string.IsNullOrEmpty(actStage))
                 {
-                    object v = null; try { v = f.GetValue(stage); } catch { }
-                    Plugin.Logger?.LogInfo($"[stage dump] field {f.Name} : {f.FieldType.Name} = {(v != null ? v.GetType().Name : "null")}");
+                    int act = Refl.ToI(Refl.Get(cache, "brno"));
+                    int no = Refl.ToI(Refl.Get(cache, "brnp"));
+                    if (act > 0 && no > 0) actStage = act + "-" + no;
                 }
-                foreach (var p in t.GetProperties(F))
+                if (!string.IsNullOrEmpty(actStage))
                 {
-                    if (!p.CanRead || p.GetIndexParameters().Length > 0) continue;
-                    object v = null; try { v = p.GetValue(stage); } catch { }
-                    Plugin.Logger?.LogInfo($"[stage dump] prop  {p.Name} : {p.PropertyType.Name} = {(v != null ? v.GetType().Name : "null")}");
+                    string diff = Refl.Str(Refl.Get(cache, "brnn"));   // ESTAGEDIFFICULTY: NORMAL/NIGHTMARE/HELL/TORMENT
+                    return string.IsNullOrEmpty(diff) ? actStage : actStage + " " + diff;
                 }
-                // methods that take or return a Stage/Cache/Info type — candidates to hook on stage start
-                foreach (var m in t.GetMethods(F))
-                {
-                    var ps = m.GetParameters();
-                    bool rel = NameLike(m.ReturnType.Name);
-                    var sb = new System.Text.StringBuilder();
-                    for (int i = 0; i < ps.Length; i++) { if (i > 0) sb.Append(','); sb.Append(ps[i].ParameterType.Name); if (NameLike(ps[i].ParameterType.Name)) rel = true; }
-                    if (rel) Plugin.Logger?.LogInfo($"[stage dump] method {m.Name}({sb}) : {m.ReturnType.Name}");
-                }
+                // legacy fallback: older builds exposed becp as a StageInfoData with Act/StageNo
+                return FromStageInfo(Refl.Get(cache, "becp"));
             }
-            catch (Exception e) { Plugin.Logger?.LogWarning("[stage dump] ex: " + e.Message); }
+            catch { return ""; }
         }
 
-        private static bool NameLike(string n)
+        private static string ExtractActStage(string s)
         {
-            if (string.IsNullOrEmpty(n)) return false;
-            return n.IndexOf("Stage", StringComparison.OrdinalIgnoreCase) >= 0
-                || n.IndexOf("Cache", StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        private static string FromStageCache(object stageCache)
-        {
-            if (stageCache == null) return "";
-            return FromStageInfo(Refl.Get(stageCache, "becp"));   // StageCache.becp -> StageInfoData
+            if (string.IsNullOrEmpty(s)) return "";
+            var m = System.Text.RegularExpressions.Regex.Match(s, @"(\d+)\s*-\s*(\d+)");
+            return m.Success ? m.Groups[1].Value + "-" + m.Groups[2].Value : "";
         }
 
         private static string FromStageInfo(object info)
@@ -285,47 +259,6 @@ namespace TbhDpsMeter
             catch { return ""; }
         }
 
-        // v may be a StageCache (has .becp) or a StageInfoData (has Act/StageNo) directly.
-        private static string TryStageObj(object v)
-        {
-            if (v == null) return "";
-            string s = FromStageCache(v);
-            return !string.IsNullOrEmpty(s) ? s : FromStageInfo(v);
-        }
-
-        /// <summary>Scan the live StageManager for a member holding the current stage (cache or info).
-        /// Fields first (no getter side effects), then properties. Caches the winning member name.</summary>
-        private static string FromLiveStage(object stage)
-        {
-            if (stage == null) return "";
-            const BindingFlags F = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-            try
-            {
-                if (_liveMember != null)
-                {
-                    string s = TryStageObj(Refl.Get(stage, _liveMember));
-                    if (!string.IsNullOrEmpty(s)) return s;
-                    _liveMember = null;   // stale, re-scan
-                }
-                var t = stage.GetType();
-                foreach (var f in t.GetFields(F))
-                {
-                    object v; try { v = f.GetValue(stage); } catch { continue; }
-                    string s = TryStageObj(v);
-                    if (!string.IsNullOrEmpty(s)) { _liveMember = f.Name; Plugin.Logger?.LogInfo($"[stage] live id from StageManager.{f.Name} = {s}"); return s; }
-                }
-                foreach (var p in t.GetProperties(F))
-                {
-                    if (!p.CanRead || p.GetIndexParameters().Length > 0) continue;
-                    object v; try { v = p.GetValue(stage); } catch { continue; }
-                    string s = TryStageObj(v);
-                    if (!string.IsNullOrEmpty(s)) { _liveMember = p.Name; Plugin.Logger?.LogInfo($"[stage] live id from StageManager.{p.Name} = {s}"); return s; }
-                }
-            }
-            catch { }
-            return "";
-        }
-
         /// <summary>Try to register a postfix on UI_Stage.hqk(StageCache, bool) to capture the active stage.</summary>
         public static void TryHook(Harmony harmony)
         {
@@ -340,41 +273,13 @@ namespace TbhDpsMeter
                 var post = new HarmonyMethod(typeof(StageProbe).GetMethod(nameof(Captured), BindingFlags.NonPublic | BindingFlags.Static));
                 harmony.Patch(target, postfix: post);
                 Plugin.Logger?.LogInfo("StageProbe: hooked UI_Stage.hqk");
-
-                // DIAG: also hook StageManager.iat(Int32) (looks like "enter stage(index)") to see
-                // whether it fires on farm-replay and what its argument is.
-                var sm = AccessTools.TypeByName("TaskbarHero.StageManager") ?? AccessTools.TypeByName("StageManager");
-                if (sm != null)
-                {
-                    foreach (var m in sm.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
-                    {
-                        var ps = m.GetParameters();
-                        if (m.Name == "iat" && ps.Length == 1 && ps[0].ParameterType == typeof(int))
-                        {
-                            harmony.Patch(m, postfix: new HarmonyMethod(typeof(StageProbe).GetMethod(nameof(EnterDiag), BindingFlags.NonPublic | BindingFlags.Static)));
-                            Plugin.Logger?.LogInfo("StageProbe: hooked StageManager.iat (diag)");
-                            break;
-                        }
-                    }
-                }
             }
             catch (Exception e) { Plugin.Logger?.LogWarning("StageProbe.TryHook: " + e.Message); }
         }
 
         private static void Captured(object[] __args)
         {
-            try
-            {
-                bool ok = __args != null && __args.Length > 0 && __args[0] != null;
-                Plugin.Logger?.LogInfo($"[stage] hqk fired, arg0={(ok ? __args[0].GetType().Name : "null")}");
-                if (ok) _lastStageCache = __args[0];
-            }
-            catch { }
-        }
-
-        private static void EnterDiag(object[] __args, object __result)
-        {
-            try { Plugin.Logger?.LogInfo($"[stage] iat({(__args != null && __args.Length > 0 ? Refl.Str(__args[0]) : "?")}) -> {Refl.Str(__result)}"); }
+            try { if (__args != null && __args.Length > 0 && __args[0] != null) _lastStageCache = __args[0]; }
             catch { }
         }
     }
