@@ -44,6 +44,7 @@ namespace TbhDpsMeter
         {
             try
             {
+                SaveGearReader.ReadParty();   // populate LastHeroExp so ReadHeroExp can value-match the accessor
                 _baseGold = HeroProbe.ReadGold();
                 _baseHeroExp.Clear();
                 foreach (var h in HeroProbe.FindParty())
@@ -155,11 +156,13 @@ namespace TbhDpsMeter
                     if (snap.Skills.Count == 0 && int.TryParse(snap.Character, out int hks)
                         && SaveGearReader.LastHeroSkills.TryGetValue(hks, out var sks))
                     {
+                        var lvls = HeroProbe.ReadSkillLevels(hero);   // skillKey -> level (in-memory)
                         foreach (var k in sks)
                         {
                             string snm = HeroProbe.ResolveSkillName(k);
                             if (string.IsNullOrEmpty(snm)) continue;   // skip nameless basic attacks (e.g. 20001)
-                            snap.Skills.Add(new SkillEntry(snm, 0, k));
+                            int lv = lvls.TryGetValue(k, out var l) ? l : 0;
+                            snap.Skills.Add(new SkillEntry(snm, lv, k));
                         }
                     }
                     snap.Captured = snap.HasAny;

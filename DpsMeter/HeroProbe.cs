@@ -485,18 +485,70 @@ namespace TbhDpsMeter
             catch { return 0; }
         }
 
+        private static System.Reflection.MemberInfo _expMember;
+        private static bool _expResolveTried;
+
+        /// <summary>Cumulative hero exp. The obfuscated accessor (jgx/brqv/…) renames every update, so we
+        /// AUTO-RESOLVE it by value: find the cache member whose value matches the save's HeroExp for this
+        /// hero (live exp ≈ saved, since the save lags only by the current session's gains). Self-healing.</summary>
         public static double ReadHeroExp(Hero hero)
         {
             try
             {
                 var cache = Refl.Get(hero, "cache");
                 if (cache == null) return double.NaN;
-                // post game-update: cumulative exp is exposed as the plain (decrypted) mirror field
-                // brqv; the old jgx() accessor is gone. Fall back to jgx() for older builds.
-                var v = Refl.Get(cache, "brqv") ?? Refl.Call(cache, "jgx");
-                return v == null ? double.NaN : Refl.ToD(v);
+                if (_expMember != null) return ReadMemberD(cache, _expMember);
+                if (_expResolveTried) return double.NaN;
+
+                int hk = ReadHeroKey(hero);
+                if (hk == 0 || !SaveGearReader.LastHeroExp.TryGetValue(hk, out double target) || target <= 0)
+                    return double.NaN;   // no save value yet to match against; try again next call
+                _expResolveTried = true;
+
+                System.Reflection.MemberInfo best = null; double bestDiff = double.MaxValue;
+                var t = cache.GetType();
+                foreach (var p in t.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    if (!p.CanRead || p.GetIndexParameters().Length != 0) continue;
+                    double v = SafeD(() => p.GetValue(cache));
+                    if (Match(v, target) && Math.Abs(v - target) < bestDiff) { bestDiff = Math.Abs(v - target); best = p; }
+                }
+                foreach (var m in t.GetMethods(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    if (m.GetParameters().Length != 0 || m.Name.StartsWith("get_") || !IsNumericReturn(m.ReturnType)) continue;
+                    double v = SafeD(() => m.Invoke(cache, null));
+                    if (Match(v, target) && Math.Abs(v - target) < bestDiff) { bestDiff = Math.Abs(v - target); best = m; }
+                }
+                _expMember = best;
+                Plugin.Logger?.LogInfo("[selfcheck] hero exp member -> " + (best != null ? best.Name : "MISSING") + " (target " + target + ")");
+                return best != null ? ReadMemberD(cache, best) : double.NaN;
             }
             catch { return double.NaN; }
+        }
+
+        // live exp must be >= saved (exp only grows) and within ~1 session's gain of it
+        private static bool Match(double v, double target) => v >= target * 0.999 && v <= target * 1.5;
+
+        private static double SafeD(Func<object> f) { try { return Refl.ToD(f()); } catch { return double.NaN; } }
+
+        // only invoke methods that return a number (or an ACTk Obscured numeric) — these are getters,
+        // safe to call; avoids invoking arbitrary game logic that could have side effects.
+        private static bool IsNumericReturn(Type rt)
+        {
+            if (rt == typeof(int) || rt == typeof(long) || rt == typeof(float) || rt == typeof(double)
+                || rt == typeof(uint) || rt == typeof(ulong) || rt == typeof(short) || rt == typeof(ushort)) return true;
+            return rt != null && rt.Name.StartsWith("Obscured", StringComparison.Ordinal);
+        }
+
+        private static double ReadMemberD(object obj, System.Reflection.MemberInfo m)
+        {
+            try
+            {
+                if (m is System.Reflection.PropertyInfo p) return Refl.ToD(p.GetValue(obj));
+                if (m is System.Reflection.MethodInfo mi) return Refl.ToD(mi.Invoke(obj, null));
+            }
+            catch { }
+            return double.NaN;
         }
 
         // EBoxType: NORMAL=0, BOSS=1, ACTBOSS=2
@@ -738,6 +790,59 @@ namespace TbhDpsMeter
         // candidate level accessors on the skill cache (uo): int getters + ObscuredInt fields
         private static readonly string[] SkillLevelMembers =
         { "jjy", "jjz", "jka", "jkb", "jke", "jkf", "jkg", "jkh", "jki", "jkm", "behj", "behk", "behl", "behm" };
+
+        private static System.Collections.Generic.List<System.Reflection.PropertyInfo> _skillDicts;
+        private static bool _skillDictsResolved;
+
+        /// <summary>Map of equipped skill key -> level, read from the Hero's Dictionary&lt;int,ActiveSkill&gt;
+        /// maps. The dictionaries are resolved BY TYPE (value type = ActiveSkill) so obfuscation renames
+        /// don't break it; the dict KEY is the skill key, and ActiveSkill.meu() (with int-method fallbacks)
+        /// gives the level. Returns an empty map on failure (skills then show without a level).</summary>
+        public static System.Collections.Generic.Dictionary<int, int> ReadSkillLevels(Hero hero)
+        {
+            var map = new System.Collections.Generic.Dictionary<int, int>();
+            try
+            {
+                if (!_skillDictsResolved)
+                {
+                    _skillDictsResolved = true;
+                    _skillDicts = new System.Collections.Generic.List<System.Reflection.PropertyInfo>();
+                    foreach (var p in typeof(Hero).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+                    {
+                        if (!p.CanRead || p.PropertyType.Name != "Dictionary`2") continue;
+                        var ga = p.PropertyType.GetGenericArguments();
+                        // active skills (ActiveSkill) AND buffs/heals (ContinuousSkill/RangeBuffSkill) —
+                        // match any Dictionary<int, *Skill> so all equipped skill types get a level.
+                        if (ga.Length == 2 && ga[1].Name.EndsWith("Skill", StringComparison.Ordinal)) _skillDicts.Add(p);
+                    }
+                    Plugin.Logger?.LogInfo("[selfcheck] Hero ActiveSkill dicts -> " + _skillDicts.Count);
+                }
+                foreach (var p in _skillDicts)
+                {
+                    object dict; try { dict = p.GetValue(hero); } catch { continue; }
+                    foreach (var kvp in Refl.EnumerateE(dict))
+                    {
+                        int key = Refl.ToI(Refl.Get(kvp, "Key"));
+                        int lv = SkillLevelOf(Refl.Get(kvp, "Value"));
+                        if (key > 0 && lv > 0) map[key] = lv;
+                    }
+                }
+            }
+            catch (Exception e) { Plugin.Logger?.LogWarning("ReadSkillLevels: " + e.Message); }
+            return map;
+        }
+
+        private static int SkillLevelOf(object activeSkill)
+        {
+            if (activeSkill == null) return 0;
+            // meu = ActiveSkill level; lxd = ContinuousSkill/RangeBuffSkill (buff/heal) level
+            foreach (var m in new[] { "meu", "lxd", "mes", "mex", "mfb", "mfd" })
+            {
+                int v = Refl.ToI(Refl.Call(activeSkill, m));
+                if (v >= 1 && v <= 99) return v;
+            }
+            return 0;
+        }
 
         public static void ReadSkills(Hero hero, CharacterSnapshot snap)
         {

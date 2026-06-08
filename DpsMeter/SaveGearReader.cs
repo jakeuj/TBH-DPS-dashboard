@@ -23,6 +23,10 @@ namespace TbhDpsMeter
         /// across game updates (plain JSON), unlike the obfuscated in-memory skill list.</summary>
         public static readonly Dictionary<int, System.Collections.Generic.List<int>> LastHeroSkills = new Dictionary<int, System.Collections.Generic.List<int>>();
 
+        /// <summary>Total accumulated HeroExp per heroKey (save's HeroExp). Used to value-match the live
+        /// in-memory exp accessor so per-run exp deltas survive obfuscation renames.</summary>
+        public static readonly Dictionary<int, double> LastHeroExp = new Dictionary<int, double>();
+
         /// <summary>Parse the live save and return equipped gear per heroKey. Empty on any failure.</summary>
         public static Dictionary<int, List<GearItem>> ReadParty()
         {
@@ -53,10 +57,13 @@ namespace TbhDpsMeter
                 {
                     LastHeroLevels.Clear();
                     LastHeroSkills.Clear();
+                    LastHeroExp.Clear();
                     foreach (var h in heroes)
                     {
                         int heroKey = (int)Json.Num(Json.Get(h, "heroKey"));
                         if (heroKey == 0) continue;
+                        double he = Json.Num(Json.Get(h, "HeroExp"));
+                        if (he > 0) LastHeroExp[heroKey] = he;
                         var sk = Json.Arr(Json.Get(h, "equippedSKillKey"));
                         if (sk != null)
                         {
