@@ -144,9 +144,22 @@ namespace TbhDpsMeter
                     {
                         foreach (var g in gl)
                         {
-                            string nm = HeroProbe.ResolveItemName(g.ItemKey, g.Uid);   // -> localized name
+                            // bundled wiki table first (stable across game updates), then in-memory tf.ipp
+                            string nm = ItemNameStore.Get(g.ItemKey);
+                            if (string.IsNullOrEmpty(nm)) nm = HeroProbe.ResolveItemName(g.ItemKey, g.Uid);
                             if (!string.IsNullOrEmpty(nm)) g.Name = nm;
                             snap.Equipment.Add(g);
+                        }
+                    }
+                    // skills from the save (stable) — used when the obfuscated in-memory read came up empty
+                    if (snap.Skills.Count == 0 && int.TryParse(snap.Character, out int hks)
+                        && SaveGearReader.LastHeroSkills.TryGetValue(hks, out var sks))
+                    {
+                        foreach (var k in sks)
+                        {
+                            string snm = HeroProbe.ResolveSkillName(k);
+                            if (string.IsNullOrEmpty(snm)) continue;   // skip nameless basic attacks (e.g. 20001)
+                            snap.Skills.Add(new SkillEntry(snm, 0, k));
                         }
                     }
                     snap.Captured = snap.HasAny;

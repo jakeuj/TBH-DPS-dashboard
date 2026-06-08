@@ -19,6 +19,10 @@ namespace TbhDpsMeter
         /// call (the save's heroSaveDatas[].HeroLevel). Used by the farming planner's exp-retention model.</summary>
         public static readonly Dictionary<int, int> LastHeroLevels = new Dictionary<int, int>();
 
+        /// <summary>Equipped skill keys per heroKey (save's equippedSKillKey, -1 slots dropped). Stable
+        /// across game updates (plain JSON), unlike the obfuscated in-memory skill list.</summary>
+        public static readonly Dictionary<int, System.Collections.Generic.List<int>> LastHeroSkills = new Dictionary<int, System.Collections.Generic.List<int>>();
+
         /// <summary>Parse the live save and return equipped gear per heroKey. Empty on any failure.</summary>
         public static Dictionary<int, List<GearItem>> ReadParty()
         {
@@ -48,10 +52,18 @@ namespace TbhDpsMeter
                 if (heroes != null)
                 {
                     LastHeroLevels.Clear();
+                    LastHeroSkills.Clear();
                     foreach (var h in heroes)
                     {
                         int heroKey = (int)Json.Num(Json.Get(h, "heroKey"));
                         if (heroKey == 0) continue;
+                        var sk = Json.Arr(Json.Get(h, "equippedSKillKey"));
+                        if (sk != null)
+                        {
+                            var keys = new System.Collections.Generic.List<int>();
+                            foreach (var k in sk) { int kk = (int)Json.Num(k); if (kk > 0) keys.Add(kk); }
+                            LastHeroSkills[heroKey] = keys;
+                        }
                         int heroLevel = (int)Json.Num(Json.Get(h, "HeroLevel"));
                         if (heroLevel > 0) LastHeroLevels[heroKey] = heroLevel;
                         var equipped = Json.Arr(Json.Get(h, "equippedItemIds"));

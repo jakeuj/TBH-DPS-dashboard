@@ -3,7 +3,7 @@
     <TargetFramework>net6.0</TargetFramework>
     <AssemblyName>TBH.DpsMeter</AssemblyName>
     <Product>TBH DPS Meter</Product>
-    <Version>0.5.3</Version>
+    <Version>0.5.4</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
@@ -19,8 +19,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- wiki farm dataset, shipped inside the DLL (offline; no extra files for the user) -->
+    <!-- wiki datasets, shipped inside the DLL (offline; no extra files for the user) -->
     <EmbeddedResource Include="farm_stages.json" />
+    <EmbeddedResource Include="item_names.json" />
   </ItemGroup>
 
   <ItemGroup>

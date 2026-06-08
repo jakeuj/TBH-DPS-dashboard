@@ -455,6 +455,19 @@ namespace TbhDpsMeter
         // item names live in a non-default Localization table; try gbt(table, key) candidates.
         private static readonly string[] ItemTables = { "Item", "Items", "ItemTable", "ItemName", "Equipment", "Gear" };
 
+        /// <summary>Localized skill name for a skill key (from the save's equippedSKillKey), via the
+        /// localization facade. Empty if it can't be resolved (caller shows the key instead).</summary>
+        public static string ResolveSkillName(int key)
+        {
+            if (key <= 0) return "";
+            foreach (var fmt in new[] { "SkillName_" + key, "Skill_" + key, "SkillName" + key, "skill_" + key })
+            {
+                string s = GameLoc(fmt);
+                if (Resolved(s, fmt)) return s;
+            }
+            return "";
+        }
+
         // ---- rewards: gold / hero exp / boxes ----
 
         /// <summary>Gold currency key — confirmed from the save's currenySaveDatas (Key 100001 = gold).</summary>
@@ -545,25 +558,51 @@ namespace TbhDpsMeter
 
         /// <summary>Fill the character's stable id (HeroInfoData.HeroKey) and localized display name
         /// (nm.gbs(HeroNameKey), falling back to the class enum).</summary>
-        public static void ReadIdentity(Hero hero, CharacterSnapshot snap)
+        private static System.Reflection.PropertyInfo _classProp;
+        private static bool _classResolved;
+
+        /// <summary>The hero's class (EEquipClassType) read from its cache, resolved BY TYPE so the
+        /// obfuscated property name (brql/…) renaming across game updates doesn't break it.
+        /// Returns 0 (=All/unknown) on failure.</summary>
+        public static int ReadClass(Hero hero)
         {
             try
             {
                 var cache = Refl.Get(hero, "cache");
-                // post game-update: HeroKey / localized name / name-key / class are flattened onto the
-                // cache (brqw / brrb / brrc / brqk); the old befr HeroInfoData path is gone.
-                int heroKey = Refl.ToI(Refl.Get(cache, "brqw"));
-                if (heroKey == 0) heroKey = Refl.ToI(Refl.Get(cache, "bego"));
-                string cls = Refl.Str(Refl.Get(cache, "brqk"));    // EEquipClassType e.g. "Ranger"
-                snap.Character = heroKey != 0 ? heroKey.ToString() : cls;
-                string name = Refl.Str(Refl.Get(cache, "brrb"));   // already localized (follows game language)
-                if (string.IsNullOrEmpty(name))
+                if (cache == null) return 0;
+                if (!_classResolved)
                 {
-                    string nameKey = Refl.Str(Refl.Get(cache, "brrc"));   // e.g. "HeroName_201"
-                    name = GameLoc(nameKey);
-                    if (string.IsNullOrEmpty(name) || name == nameKey) name = cls;
+                    _classResolved = true;
+                    foreach (var p in cache.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+                        if (p.CanRead && p.GetIndexParameters().Length == 0 && p.PropertyType.Name == "EEquipClassType") { _classProp = p; break; }
+                    Plugin.Logger?.LogInfo("[selfcheck] Hero cache class property -> " + (_classProp != null ? _classProp.Name : "MISSING"));
                 }
-                snap.CharacterName = name;
+                if (_classProp == null) return 0;
+                return Convert.ToInt32(_classProp.GetValue(cache));
+            }
+            catch { return 0; }
+        }
+
+        /// <summary>Hero key derived from class: keys are class*100+1 (Knight1→101, Ranger2→201,
+        /// Sorcerer3→301, Priest4→401, …). Robust to obfuscation; the save is keyed by this. 0 = unknown.</summary>
+        public static int ReadHeroKey(Hero hero)
+        {
+            int cls = ReadClass(hero);
+            return cls > 0 ? cls * 100 + 1 : 0;
+        }
+
+        public static void ReadIdentity(Hero hero, CharacterSnapshot snap)
+        {
+            try
+            {
+                int heroKey = ReadHeroKey(hero);
+                snap.Character = heroKey != 0 ? heroKey.ToString() : "";
+                // name from the stable localization key (HeroName_<key>); follows the in-game language.
+                if (heroKey != 0)
+                {
+                    string name = GameLoc("HeroName_" + heroKey);
+                    if (!string.IsNullOrEmpty(name) && name != "HeroName_" + heroKey) snap.CharacterName = name;
+                }
             }
             catch (Exception e) { Plugin.Logger?.LogWarning("ReadIdentity: " + e.Message); }
         }
