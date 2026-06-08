@@ -35,7 +35,7 @@ namespace TbhDpsMeter
         private float _wantX, _wantY;   // intended position; clamped non-destructively so window resizes don't move the panel
 
         // clickable regions (set during OnGUI, hit-tested in Update via InputCompat)
-        private Rect _resetRect, _prevRect, _nextRect, _handleRect;
+        private Rect _resetRect, _prevRect, _nextRect, _handleRect, _updRect;
 
         private Texture2D _white, _bgTex;
         private float _bgAlphaBaked = -1f;
@@ -154,6 +154,7 @@ namespace TbhDpsMeter
             if (InputCompat.MousePressed())
             {
                 if (_resetRect.Contains(m)) { ResetMeter(); return; }
+                if (_updRect.Contains(m) && Updater.State == Updater.St.Available) { Updater.DownloadAsync(); return; }
                 if (_prevRect.Contains(m)) { NavOlder(); return; }
                 if (_nextRect.Contains(m)) { NavNewer(); return; }
                 // drag from anywhere on the panel (buttons handled above); claim ownership so
@@ -391,7 +392,9 @@ namespace TbhDpsMeter
                 float graphH = 64f;
                 float barH = 16f;
                 int legendRows = Mathf.CeilToInt(Mathf.Min(parts.Count, 6) / 2f);
-                float height = Pad + lh /*header*/ + lh /*nav*/ + (fs + 12) /*big*/
+                bool showUpd = Updater.State == Updater.St.Available || Updater.State == Updater.St.Downloading
+                    || Updater.State == Updater.St.Downloaded || Updater.State == Updater.St.Error;
+                float height = Pad + lh /*header*/ + (showUpd ? lh : 0) /*update banner*/ + lh /*nav*/ + (fs + 12) /*big*/
                     + lh + lh /*peak/avg,total/dur*/ + lh /*crit*/
                     + 6 + graphH + 14 /*graph + x labels*/ + 6 + barH
                     + (legendRows > 0 ? lh * legendRows : 0) + Pad;
@@ -413,6 +416,27 @@ namespace TbhDpsMeter
                 _resetRect = new Rect(x + w - 56, cy - 1, 50, lh + 2);
                 GUI.Button(_resetRect, Loc.G("reset"), _btn);
                 cy += lh;
+
+                // update banner (auto-check). [download] button hit-tested in HandlePointer.
+                _updRect = new Rect(0, 0, 0, 0);
+                if (showUpd)
+                {
+                    switch (Updater.State)
+                    {
+                        case Updater.St.Available:
+                            GUI.Label(new Rect(ix, cy, iw - 70, lh), $"<color=#FFC857>🔄 v{Updater.LatestVersion} {Loc.G("update_available")}</color>", _dim);
+                            _updRect = new Rect(x + w - 64, cy - 1, 56, lh);
+                            GUI.Button(_updRect, Loc.G("download"), _btn);
+                            break;
+                        case Updater.St.Downloading:
+                            GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#9fb4cc>⬇ {Loc.G("downloading")}</color>", _dim); break;
+                        case Updater.St.Downloaded:
+                            GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#5fd07c>✅ {Loc.G("restart_apply")}</color>", _dim); break;
+                        case Updater.St.Error:
+                            GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#ef6a5a>⚠ {Loc.G("update_error")}</color>", _dim); break;
+                    }
+                    cy += lh;
+                }
 
                 // nav row: ◀  (live/review)  ▶
                 _prevRect = new Rect(ix, cy, 30, lh);

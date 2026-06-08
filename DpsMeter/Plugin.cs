@@ -14,7 +14,7 @@ namespace TbhDpsMeter
     {
         public const string Guid = "tbh.dpsmeter";
         public const string Name = "TBH DPS Meter";
-        public const string Version = "0.5.5";
+        public const string Version = "0.5.6";
 
         public static DpsTracker Tracker;
         public static DamageTakenTracker TakenTracker;
@@ -32,6 +32,7 @@ namespace TbhDpsMeter
         public static ConfigEntry<int> FontSize;
         public static ConfigEntry<float> WindowSeconds;
         public static ConfigEntry<bool> DebugDamage;
+        public static ConfigEntry<bool> AutoCheckUpdate;
         private static ConfigEntry<string> _toggleKeyName;
 
         // damage-taken panel config
@@ -76,6 +77,7 @@ namespace TbhDpsMeter
             WindowSeconds = Config.Bind("Meter", "LiveWindowSeconds", 5f, "Sliding window length for the live DPS number.");
             _toggleKeyName = Config.Bind("General", "ToggleKey", "F9", "Key to show/hide the DPS overlay (UnityEngine.KeyCode name).");
             DebugDamage = Config.Bind("Debug", "LogDamageSamples", false, "Log the first damage hits to verify the hook is correct.");
+            AutoCheckUpdate = Config.Bind("General", "AutoCheckUpdate", true, "On launch, check GitHub for a newer release and show a download prompt in the panel.");
 
             var lang = Config.Bind("General", "Language", "Auto",
                 "UI language: Auto / zh-Hant / zh-Hans / en / ja / es.");
@@ -140,6 +142,7 @@ namespace TbhDpsMeter
 
 
             SelfCheck.Run();
+            if (AutoCheckUpdate.Value) Updater.CheckAsync();
             Logger.LogInfo($"{Name} {Version} loaded.");
         }
 
