@@ -1,0 +1,18 @@
+---
+import { type Locale, GITHUB_OWNER, GITHUB_REPO } from '../config';
+import { getDict } from '../i18n';
+interface Props { locale: Locale; }
+const { locale } = Astro.props;
+const d = getDict(locale);
+const t = d.finalCta;
+const releases = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+const gh = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}`;
+---
+<section class="final"><div class="wrap">
+  <h2>{t.title}</h2>
+  <p>{t.sub}</p>
+  <div class="cta" style="justify-content:center">
+    <a class="btn primary" href={releases}>↓ {d.hero.ctaDownload}</a>
+    <a class="btn ghost" href={gh}>GitHub →</a>
+  </div>
+</div></section>

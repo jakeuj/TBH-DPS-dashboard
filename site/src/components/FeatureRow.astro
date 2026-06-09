@@ -1,0 +1,15 @@
+---
+import type { Dict } from '../i18n/types';
+import Screenshot from './Screenshot.astro';
+interface Props { feature: Dict['features'][number]; image: ImageMetadata; reversed: boolean; }
+const { feature, image, reversed } = Astro.props;
+---
+<div class={`feat${reversed ? ' rev' : ''}`}>
+  <div class="txt">
+    <span class="tag">{feature.tag}</span>
+    <h3>{feature.title}</h3>
+    <p>{feature.body}</p>
+    <ul>{feature.points.map((p) => <li>{p}</li>)}</ul>
+  </div>
+  <div><Screenshot src={image} alt={feature.title} /></div>
+</div>

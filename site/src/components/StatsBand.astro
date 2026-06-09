@@ -1,0 +1,13 @@
+---
+import { type Locale } from '../config';
+import { getDict } from '../i18n';
+interface Props { locale: Locale; }
+const { locale } = Astro.props;
+const t = getDict(locale).stats;
+---
+<div class="wrap"><div class="stats">
+  <div class="stat"><div class="n mono">6</div><div class="l">{t.damageTypes}</div></div>
+  <div class="stat"><div class="n mono">4</div><div class="l">{t.panels}</div></div>
+  <div class="stat"><div class="n mono">5</div><div class="l">{t.languages}</div></div>
+  <div class="stat"><div class="n mono">100%</div><div class="l">{t.openSource}</div></div>
+</div></div>

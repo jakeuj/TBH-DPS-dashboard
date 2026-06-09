@@ -1,17 +1,30 @@
 ---
-
+import BaseLayout from '../components/BaseLayout.astro';
+import Hero from '../components/Hero.astro';
+import StatsBand from '../components/StatsBand.astro';
+import FeatureRow from '../components/FeatureRow.astro';
+import InstallSteps from '../components/InstallSteps.astro';
+import Faq from '../components/Faq.astro';
+import FinalCta from '../components/FinalCta.astro';
+import { getDict } from '../i18n';
+import dps from '../assets/dps.png';
+import taken from '../assets/taken.png';
+import compare from '../assets/compare.png';
+import farm from '../assets/farm.png';
+const locale = 'en' as const;
+const dict = getDict(locale);
+const images = [dps, taken, compare, farm];
 ---
-
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
-</html>
+<BaseLayout locale={locale} path="/" title={dict.meta.homeTitle} description={dict.meta.homeDesc} jsonLd>
+  <Hero locale={locale} />
+  <StatsBand locale={locale} />
+  <section class="section alt" id="features"><div class="wrap">
+    <div class="kicker">{dict.featuresKicker}</div>
+    <div class="h2">{dict.featuresTitle}</div>
+    <p class="sub">{dict.featuresSub}</p>
+    {dict.features.map((f, i) => <FeatureRow feature={f} image={images[i]} reversed={i % 2 === 1} />)}
+  </div></section>
+  <InstallSteps locale={locale} />
+  <Faq locale={locale} />
+  <FinalCta locale={locale} />
+</BaseLayout>

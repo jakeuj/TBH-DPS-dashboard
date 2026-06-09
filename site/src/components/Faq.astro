@@ -1,0 +1,17 @@
+---
+import { type Locale } from '../config';
+import { getDict } from '../i18n';
+interface Props { locale: Locale; }
+const { locale } = Astro.props;
+const t = getDict(locale).faq;
+---
+<section class="section alt" id="faq"><div class="wrap">
+  <div class="kicker">{t.kicker}</div>
+  <div class="h2">{t.title}</div>
+  <div class="sub">　</div>
+  <div class="faq">
+    {t.items.map((it) => (
+      <div class="qa"><h4>{it.q} <span>+</span></h4><p>{it.a}</p></div>
+    ))}
+  </div>
+</div></section>
