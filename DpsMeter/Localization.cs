@@ -117,6 +117,7 @@ namespace TbhDpsMeter
             { "metric_opens",   new[] { "開箱率", "Opens", "開封数", "开箱率", "Aperturas" } },
             { "metric_pickup",  new[] { "寶箱獲取", "Box Pickups", "宝箱取得", "宝箱获取", "Cajas" } },
             { "metric_loot",    new[] { "掉寶率", "Loot", "良品率", "掉宝率", "Botín" } },
+            { "metric_openlog", new[] { "開箱紀錄", "Open Log", "開封記録", "开箱记录", "Registro" } },
             { "lm_total",       new[] { "總計", "Total", "合計", "总计", "Total" } },
             { "lm_today",       new[] { "今日", "Today", "今日", "今日", "Hoy" } },
             { "lm_week",        new[] { "本週", "This week", "今週", "本周", "Semana" } },

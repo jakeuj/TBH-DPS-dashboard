@@ -1,13 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 
 namespace TbhDpsMeter
 {
     /// <summary>IMGUI overlay (F-key, hub slot 6): the 掉寶熱力圖 / Loot Heatmap. Visualizes existing
     /// trackers over time — two stacked day × 24-hour grids: top = F5 box pickups (BoxTracker.Events,
-    /// blue), bottom = F4 opens of legendary+ loot (BoxOpenTracker.Stats, Grade>=3, gold-green) — a
-    /// summary row, and a clear-time trend chart that follows F11's selected stage at the bottom.
+    /// blue), bottom = ALL F4 opens (BoxOpenTracker.Stats.Log, gold-green) with a per-cell detail hover
+    /// listing each open — a summary row, and a clear-time trend chart that follows F11's selected stage.
     /// Read-only; resize-safe; drag from anywhere; auto-hides with the other panels while a game menu
     /// is open.</summary>
     public class LootMapOverlayBehaviour : MonoBehaviour
@@ -17,7 +18,6 @@ namespace TbhDpsMeter
         private const float Pad = 10f;
         private const int MaxDayRows = 7;        // two grids → keep compact
         private const float ChartH = 100f;
-        private const int GoodGrade = 3;         // grade >= 3 counts as "good loot"
 
         private Rect _rect = new Rect(24, 120, 560, 0);
         private bool _visible, _placed;
@@ -25,7 +25,7 @@ namespace TbhDpsMeter
         private Vector2 _dragOffset; private bool _dragging;
 
         private Texture2D _white, _bgTex;
-        private GUIStyle _title, _label, _dim, _tiny, _btn, _box, _tip;
+        private GUIStyle _title, _label, _dim, _tiny, _btn, _box, _tip, _tipMulti;
         private bool _stylesReady;
 
         private Rect _closeRect;
@@ -100,6 +100,7 @@ namespace TbhDpsMeter
             _tiny = new GUIStyle { fontSize = Mathf.Max(9, fs - 4), richText = true }; _tiny.normal.textColor = new Color(0.7f, 0.75f, 0.85f);
             _btn = new GUIStyle(GUI.skin.button) { fontSize = fs - 2, fontStyle = FontStyle.Bold, richText = true };
             _tip = new GUIStyle { fontSize = fs - 2, richText = true, alignment = TextAnchor.MiddleCenter }; _tip.normal.textColor = new Color(0.95f, 0.95f, 0.95f);
+            _tipMulti = new GUIStyle { fontSize = fs - 2, richText = true, wordWrap = false, alignment = TextAnchor.UpperLeft }; _tipMulti.normal.textColor = new Color(0.95f, 0.95f, 0.95f);
             _box = new GUIStyle(); _box.normal.background = _bgTex;
             _stylesReady = true;
         }
@@ -170,9 +171,10 @@ namespace TbhDpsMeter
                 }
                 catch { }
 
-                // ---- BOTTOM grid source: F4 opens with Grade>=3 (BoxOpenTracker.Stats.Log) by (day, hour) ----
+                // ---- BOTTOM grid source: ALL F4 opens (BoxOpenTracker.Stats.Log) by (day, hour) ----
                 var goodByDay = new Dictionary<string, long[]>();
-                long totalGood = 0;
+                var openEvByCell = new Dictionary<string, List<BoxOpenEvent>>();   // "day|hour" -> events
+                long totalOpen = 0;
                 try
                 {
                     var log = BoxOpenTracker.Stats.Log;
@@ -180,12 +182,13 @@ namespace TbhDpsMeter
                     {
                         var e = log[i];
                         if (e == null) continue;
-                        int g = e.Grade; if (g < 0) g = 0; else if (g > 9) g = 9;
-                        if (g < GoodGrade) continue;
                         string day = e.Time.ToString("yyyy-MM-dd");
                         int hh = e.Time.Hour; if (hh < 0) hh = 0; else if (hh > 23) hh = 23;
                         if (!goodByDay.TryGetValue(day, out var gArr)) { gArr = new long[24]; goodByDay[day] = gArr; }
-                        gArr[hh]++; totalGood++;
+                        gArr[hh]++; totalOpen++;
+                        string ckey = day + "|" + hh;
+                        if (!openEvByCell.TryGetValue(ckey, out var lst)) { lst = new List<BoxOpenEvent>(); openEvByCell[ckey] = lst; }
+                        lst.Add(e);
                     }
                 }
                 catch { }
@@ -225,9 +228,9 @@ namespace TbhDpsMeter
                 _closeRect = new Rect(x + w - 26, cy - 2, 22, lh); GUI.Button(_closeRect, "✕", _btn);
                 cy += lh;
 
-                // ---- summary row: total pickups (F5) / total good loot (F4 grade>=3) ----
+                // ---- summary row: total pickups (F5) / total opens (F4) ----
                 GUI.Label(new Rect(ix, cy, iw, lh),
-                    $"<color=#aeb6c2>{Loc.G("metric_pickup")} <color=#eaf3ee>{totalPickups}</color>　{Loc.G("metric_loot")} <color=#eaf3ee>{totalGood}</color></color>", _label);
+                    $"<color=#aeb6c2>{Loc.G("metric_pickup")} <color=#eaf3ee>{totalPickups}</color>　{Loc.G("metric_openlog")} <color=#eaf3ee>{BoxOpenTracker.Stats.Log.Count}</color></color>", _label);
                 cy += lh;
 
                 // ---- two heatmap grids (opens, then loot) ----
@@ -235,7 +238,7 @@ namespace TbhDpsMeter
                 Vector2 mLocal = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
 
                 // grid max over visible cells (own normalization per grid)
-                long maxPickup = 1, maxGood = 1;
+                long maxPickup = 1, maxOpen = 1;
                 for (int r = 0; r < dayRows; r++)
                 {
                     pickupByDay.TryGetValue(days[r], out var pArr);
@@ -243,13 +246,13 @@ namespace TbhDpsMeter
                     for (int hh = 0; hh < 24; hh++)
                     {
                         if (pArr != null && pArr[hh] > maxPickup) maxPickup = pArr[hh];
-                        if (gArr != null && gArr[hh] > maxGood) maxGood = gArr[hh];
+                        if (gArr != null && gArr[hh] > maxOpen) maxOpen = gArr[hh];
                     }
                 }
 
-                cy = DrawGrid(ix, cy, iw, lh, cellH, mLocal, days, dayRows, pickupByDay, Loc.G("metric_pickup"), maxPickup, 0);
+                cy = DrawGrid(ix, cy, iw, lh, cellH, mLocal, days, dayRows, pickupByDay, Loc.G("metric_pickup"), maxPickup, 0, null);
                 cy += lh * 0.4f;
-                cy = DrawGrid(ix, cy, iw, lh, cellH, mLocal, days, dayRows, goodByDay, Loc.G("metric_loot"), maxGood, 1);
+                cy = DrawGrid(ix, cy, iw, lh, cellH, mLocal, days, dayRows, goodByDay, Loc.G("metric_openlog"), maxOpen, 1, openEvByCell);
 
                 // ---- separator + clear-time trend chart ----
                 if (hasChart)
@@ -262,16 +265,23 @@ namespace TbhDpsMeter
                     cy += ChartH + lh;
                 }
 
-                // ---- hover tooltip (drawn last, on top) ----
+                // ---- hover tooltip (drawn last, on top); may be multi-line (split on \n) ----
                 if (_hasTip)
                 {
-                    var sz = _tip.CalcSize(new GUIContent(_tipText));
-                    float tw = sz.x + 12f, th = lh;
+                    int lineCount = 1; for (int i = 0; i < _tipText.Length; i++) if (_tipText[i] == '\n') lineCount++;
+                    bool multi = lineCount > 1;
+                    float tlh = fs + 4f;
+                    float th = multi ? lineCount * tlh + 6f : lh;
+                    float tw = multi ? Mathf.Min(360f, iw) : _tip.CalcSize(new GUIContent(_tipText)).x + 12f;
                     float tx = Mathf.Clamp(_tipCell.x + _tipCell.width * 0.5f - tw * 0.5f, ix, ix + iw - tw);
                     float ty = _tipCell.y - th - 2f; if (ty < _rect.y) ty = _tipCell.y + _tipCell.height + 2f;
+                    ty = Mathf.Clamp(ty, _rect.y, _rect.y + _rect.height - th);
                     DrawRect(tx, ty, tw, th, new Color(0.05f, 0.06f, 0.09f, 0.96f));
                     DrawRect(tx, ty, tw, 1, new Color(1, 1, 1, 0.18f));
-                    GUI.Label(new Rect(tx, ty, tw, th), $"<color=#eaf3ee>{_tipText}</color>", _tip);
+                    if (multi)
+                        GUI.Label(new Rect(tx + 6f, ty + 3f, tw - 8f, th - 6f), $"<color=#eaf3ee>{_tipText}</color>", _tipMulti);
+                    else
+                        GUI.Label(new Rect(tx, ty, tw, th), $"<color=#eaf3ee>{_tipText}</color>", _tip);
                 }
             }
             catch { }
@@ -281,7 +291,8 @@ namespace TbhDpsMeter
         // Draws one labeled heatmap grid (header + day gutter + 24 hour columns + hour-axis ticks).
         // Returns the y just below the grid. Records a hover tooltip into _hasTip/_tipCell/_tipText.
         private float DrawGrid(float ix, float cy, float iw, float lh, float cellH, Vector2 mLocal,
-            List<string> days, int dayRows, Dictionary<string, long[]> data, string header, long maxVisible, int metric)
+            List<string> days, int dayRows, Dictionary<string, long[]> data, string header, long maxVisible, int metric,
+            Dictionary<string, List<BoxOpenEvent>> evByCell)
         {
             GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#9fb4cc>{header}</color>", _dim);
             cy += lh;
@@ -309,7 +320,12 @@ namespace TbhDpsMeter
                     long v = arr != null ? arr[hh] : 0;
                     var cr = new Rect(gridX + hh * cellW, gy, cellW - 1f, cellH - 1f);
                     DrawRect(cr.x, cr.y, cr.width, cr.height, RampColor(v / (float)maxVisible, metric));
-                    if (cr.Contains(mLocal)) { _hasTip = true; _tipCell = cr; _tipText = $"{shortDay} {hh:00}:00 · {v}"; }
+                    if (cr.Contains(mLocal))
+                    {
+                        _hasTip = true; _tipCell = cr;
+                        if (evByCell != null) _tipText = BuildOpenTip(evByCell, day, hh, shortDay);
+                        else _tipText = $"{shortDay} {hh:00}:00 · {v}";
+                    }
                 }
                 gy += cellH;
             }
@@ -319,6 +335,42 @@ namespace TbhDpsMeter
             foreach (int t in ticks)
                 GUI.Label(new Rect(gridX + t * cellW, gy, cellW * 3, lh), $"<size=9><color=#7a8390>{t}</color></size>", _tiny);
             return gy + lh;
+        }
+
+        private static readonly string[] kindKeys = { "box_kind_normal", "box_kind_boss", "box_kind_actboss", "box_kind_unknown" };
+
+        // Detailed multi-line tooltip for a bottom-grid (開箱紀錄) cell: header "MM-DD HH:00" then up to
+        // 8 newest-first detail lines "HH:mm:ss   品質   箱種   物品", plus a "… +N more" overflow line.
+        private static string BuildOpenTip(Dictionary<string, List<BoxOpenEvent>> evByCell, string day, int hh, string shortDay)
+        {
+            var sb = new StringBuilder();
+            sb.Append(shortDay).Append(' ').Append(hh.ToString("00")).Append(":00");
+            if (evByCell.TryGetValue(day + "|" + hh, out var lst) && lst != null && lst.Count > 0)
+            {
+                int n = lst.Count;
+                int shown = n > 8 ? 8 : n;
+                for (int i = 0; i < shown; i++)
+                {
+                    var e = lst[n - 1 - i];   // newest first
+                    int k = (e.Kind >= 0 && e.Kind < 4) ? e.Kind : 3;
+                    sb.Append('\n')
+                      .Append(e.Time.ToString("HH:mm:ss")).Append("   ")
+                      .Append(Loc.G("grade_" + BoxGrade.KeyOf(e.Grade))).Append("   ")
+                      .Append(Loc.G(kindKeys[k])).Append("   ")
+                      .Append(ResolveItem(e.Name));
+                }
+                if (n > shown) sb.Append("\n… +").Append(n - shown).Append(" more");
+            }
+            return sb.ToString();
+        }
+
+        private static string ResolveItem(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return "";
+            int us = key.LastIndexOf('_');
+            string digits = us >= 0 ? key.Substring(us + 1) : key;
+            if (int.TryParse(digits, out int id)) { string nm = ItemNameStore.Get(id); if (!string.IsNullOrEmpty(nm)) return nm; }
+            return key;
         }
     }
 }
