@@ -138,6 +138,75 @@ class Tests
         JsonTests();
         FarmTests();
 
+        // ===== BoxOpenStats: aggregation + percentages =====
+        var bo = new BoxOpenStats();
+        // Normal(0): 3 common(0), 1 rare(2). Boss(1): 1 common, 1 legendary(3).
+        bo.Add(new BoxOpenEvent { Kind = 0, Grade = 0, Name = "a", Stage = "1-1", Time = DateTime.Now });
+        bo.Add(new BoxOpenEvent { Kind = 0, Grade = 0, Name = "b", Stage = "1-1", Time = DateTime.Now });
+        bo.Add(new BoxOpenEvent { Kind = 0, Grade = 0, Name = "c", Stage = "1-1", Time = DateTime.Now });
+        bo.Add(new BoxOpenEvent { Kind = 0, Grade = 2, Name = "d", Stage = "1-1", Time = DateTime.Now });
+        bo.Add(new BoxOpenEvent { Kind = 1, Grade = 0, Name = "e", Stage = "1-1", Time = DateTime.Now });
+        bo.Add(new BoxOpenEvent { Kind = 1, Grade = 3, Name = "f", Stage = "1-1", Time = DateTime.Now });
+        Check("box total = 6", bo.Total() == 6, bo.Total());
+        Check("normal total = 4", bo.KindTotal(0) == 4, bo.KindTotal(0));
+        Check("normal common count = 3", bo.Count(0, 0) == 3, bo.Count(0, 0));
+        Check("normal rare pct = 25", Near(bo.Percent(0, 2), 25.0), bo.Percent(0, 2));
+        Check("boss legendary pct = 50", Near(bo.Percent(1, 3), 50.0), bo.Percent(1, 3));
+        Check("grade-total common = 4", bo.GradeTotal(0) == 4, bo.GradeTotal(0));
+        Check("unknown kind total = 0", bo.KindTotal(3) == 0, bo.KindTotal(3));
+        bo.Add(new BoxOpenEvent { Kind = 9, Grade = 99, Name = "x", Stage = "?", Time = DateTime.Now });
+        Check("oob kind -> unknown", bo.KindTotal(3) == 1, bo.KindTotal(3));
+        Check("oob grade -> common", bo.Count(3, 0) == 1, bo.Count(3, 0));
+
+        var bo2 = new BoxOpenStats();
+        bo2.LoadCounts(bo.SerializeCounts());
+        Check("counts round-trip normal common", bo2.Count(0, 0) == 3, bo2.Count(0, 0));
+        Check("counts round-trip total", bo2.Total() == bo.Total(), bo2.Total());
+
+        var ev0 = new BoxOpenEvent { Kind = 2, Grade = 5, Name = "Sword of\tTabs", Stage = "3-2 HELL", Time = new DateTime(637000000000000000) };
+        var ev1 = BoxOpenStats.ParseEvent(BoxOpenStats.SerializeEvent(ev0));
+        Check("event round-trip kind", ev1.Kind == 2, ev1.Kind);
+        Check("event round-trip grade", ev1.Grade == 5, ev1.Grade);
+        Check("event round-trip stage", ev1.Stage == "3-2 HELL", ev1.Stage);
+        Check("event round-trip ticks", ev1.Time.Ticks == ev0.Time.Ticks, ev1.Time.Ticks);
+        Check("event sanitizes tabs", !ev1.Name.Contains('\t'), ev1.Name);
+
+        var bo3 = new BoxOpenStats();
+        for (int i = 0; i < BoxOpenStats.MaxLog + 50; i++)
+            bo3.Add(new BoxOpenEvent { Kind = 0, Grade = 0, Name = "n", Stage = "1-1", Time = DateTime.Now });
+        Check("log capped at MaxLog", bo3.Log.Count == BoxOpenStats.MaxLog, bo3.Log.Count);
+
+        // ===== BoxStore: pickup persistence round-trip =====
+        BoxStore.Dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "tbh_boxstore_test_" + Guid.NewGuid().ToString("N"));
+        BoxStore.Clear();
+        BoxStore.Append(new BoxEvent { Time = new DateTime(637000000000000000), Stage = "2-4 HELL", Arg = 910651, Type = "Normal Monster Box Lv65" });
+        BoxStore.Append(new BoxEvent { Time = new DateTime(637000000000000001), Stage = "2-4 HELL", Arg = 910999, Type = "Boss Box" });
+        var loaded = BoxStore.LoadAll(500);
+        Check("boxstore loaded 2", loaded.Count == 2, loaded.Count);
+        Check("boxstore stage", loaded[0].Stage == "2-4 HELL", loaded[0].Stage);
+        Check("boxstore arg", loaded[1].Arg == 910999, loaded[1].Arg);
+        Check("boxstore type", loaded[0].Type == "Normal Monster Box Lv65", loaded[0].Type);
+        var capped = BoxStore.LoadAll(1);
+        Check("boxstore cap keeps newest", capped.Count == 1 && capped[0].Arg == 910999, capped.Count);
+        BoxStore.Clear();
+        Check("boxstore clear empties", BoxStore.LoadAll(500).Count == 0, BoxStore.LoadAll(500).Count);
+
+        // ===== BoxOpenStore: stats persistence round-trip =====
+        BoxOpenStore.Dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "tbh_boxopen_test_" + Guid.NewGuid().ToString("N"));
+        BoxOpenStore.Clear();
+        var src = new BoxOpenStats();
+        src.Add(new BoxOpenEvent { Kind = 0, Grade = 0, Name = "a", Stage = "1-1", Time = DateTime.Now });
+        src.Add(new BoxOpenEvent { Kind = 1, Grade = 3, Name = "b", Stage = "1-1", Time = DateTime.Now });
+        BoxOpenStore.Save(src);
+        var dst = new BoxOpenStats();
+        BoxOpenStore.Load(dst);
+        Check("boxopenstore counts restored", dst.Total() == 2 && dst.Count(1, 3) == 1, dst.Total());
+        Check("boxopenstore log restored", dst.Log.Count == 2, dst.Log.Count);
+        BoxOpenStore.Clear();
+        var empty = new BoxOpenStats();
+        BoxOpenStore.Load(empty);
+        Check("boxopenstore clear empties", empty.Total() == 0, empty.Total());
+
         Console.WriteLine(_fail == 0 ? "\nALL TESTS PASSED" : $"\n{_fail} TEST(S) FAILED");
         return _fail == 0 ? 0 : 1;
     }
