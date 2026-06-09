@@ -182,6 +182,7 @@ namespace TbhDpsMeter
                     {
                         var e = log[i];
                         if (e == null) continue;
+                        if (e.Grade < 3) continue;   // 開箱紀錄: legendary (傳說) and above only
                         string day = e.Time.ToString("yyyy-MM-dd");
                         int hh = e.Time.Hour; if (hh < 0) hh = 0; else if (hh > 23) hh = 23;
                         if (!goodByDay.TryGetValue(day, out var gArr)) { gArr = new long[24]; goodByDay[day] = gArr; }
@@ -230,7 +231,7 @@ namespace TbhDpsMeter
 
                 // ---- summary row: total pickups (F5) / total opens (F4) ----
                 GUI.Label(new Rect(ix, cy, iw, lh),
-                    $"<color=#aeb6c2>{Loc.G("metric_pickup")} <color=#eaf3ee>{totalPickups}</color>　{Loc.G("metric_openlog")} <color=#eaf3ee>{BoxOpenTracker.Stats.Log.Count}</color></color>", _label);
+                    $"<color=#aeb6c2>{Loc.G("metric_pickup")} <color=#eaf3ee>{totalPickups}</color>　{Loc.G("metric_openlog")} <color=#eaf3ee>{totalOpen}</color></color>", _label);
                 cy += lh;
 
                 // ---- two heatmap grids (opens, then loot) ----
@@ -355,7 +356,8 @@ namespace TbhDpsMeter
                     int k = (e.Kind >= 0 && e.Kind < 4) ? e.Kind : 3;
                     sb.Append('\n')
                       .Append(e.Time.ToString("HH:mm:ss")).Append("   ")
-                      .Append(Loc.G("grade_" + BoxGrade.KeyOf(e.Grade))).Append("   ")
+                      .Append("<color=").Append(BoxOpenOverlayBehaviour.GradeHex(e.Grade)).Append('>')
+                      .Append(Loc.G("grade_" + BoxGrade.KeyOf(e.Grade))).Append("</color>   ")
                       .Append(Loc.G(kindKeys[k])).Append("   ")
                       .Append(ResolveItem(e.Name));
                 }

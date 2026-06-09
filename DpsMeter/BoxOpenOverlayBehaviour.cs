@@ -39,6 +39,10 @@ namespace TbhDpsMeter
 
         private static string Hex(Color c) => $"#{(int)(c.r*255):X2}{(int)(c.g*255):X2}{(int)(c.b*255):X2}";
 
+        /// <summary>Hex color for a grade, matching this panel's per-grade row colors. Public so the
+        /// loot-heatmap tooltip can color grade names identically (one source of truth).</summary>
+        public static string GradeHex(int g) => Hex(g >= 0 && g < GradeColors.Length ? GradeColors[g] : Color.white);
+
         private Rect ScaledRect() => new Rect(_rect.x, _rect.y, _rect.width * _scale, _rect.height * _scale);
 
         void Awake()
