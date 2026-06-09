@@ -2,8 +2,9 @@
 
 **English** · [日本語](README.ja.md) · [繁體中文](README.zh-Hant.md) · [简体中文](README.zh-Hans.md)
 
-In-game **DPS / damage-taken / stage-compare / farming-planner / box-log** overlay for **TaskBarHero**
-(TBH: Task Bar Hero), built as a BepInEx 6 IL2CPP plugin. Tested on game **v1.00.09** (Unity 6 / IL2CPP).
+In-game overlay for **TaskBarHero** (TBH: Task Bar Hero) — **DPS · damage-taken · stage-compare ·
+farming-planner · box-log · opened-box stats · loot-heatmap**, all toggled from an **F1 control center**.
+Built as a BepInEx 6 IL2CPP plugin. Tested on game **v1.00.09** (Unity 6 / IL2CPP).
 UI auto-detects **English / 日本語 / 繁體中文 / 简体中文 / Español**.
 
 > ⬇️ **Players: just download the zip from [Releases](../../releases/latest) — no compiling needed.**
@@ -83,6 +84,25 @@ adjust the **volume**, **test** it, or choose your own **.wav** (a built-in two-
 
 > *Each box logged with time, stage and name; Stage Boss Boxes in blue with a separate tally.*
 
+## Opened-box Stats (F4)
+Press **F4** for **opened-box stats** — what you actually *pull* when you open boxes. A **grade × box-kind
+matrix** (count and %) over your lifetime tally shows the rarity distribution per box type (so you can see
+which boxes are worth opening), alongside a paged, time-ordered **open log**.
+
+## Loot Heatmap (F3)
+Press **F3** for the **loot heatmap** — two stacked **day × 24-hour** grids that reveal *when* your loot
+happens: the top grid = **box pickups** (mirrors the F5 log, blue), the bottom = **legendary-or-better opens**
+(from F4, grade ≥ 3, gold-green), with a summary row on the side. A **clear-time trend** chart at the bottom
+follows whichever stage is currently selected in the F11 compare panel, so you can line up *when you grinded*
+against *how fast you were clearing*.
+
+## Control Center (F1)
+Press **F1** for the **control center** — one compact hub that lists **every** panel as a toggle button
+(lit when shown, dim when hidden), so you can flip DPS, damage-taken, compare, planner, box-log, opened-box
+and loot-heatmap on/off from a single place instead of memorizing every hotkey. A tiny live summary
+(**DPS · session time · boxes opened**) sits at the top. Shown on launch by default; new panels register
+themselves automatically.
+
 ## Display scaling
 Panels **auto-shrink** so they never run off the screen on small or low-resolution displays. Set your own
 size with the **− UI % +** control on the DPS panel's title row, or **Ctrl + PageUp / PageDown** — applied
@@ -91,11 +111,14 @@ to every panel and saved as `UI.UIScale`.
 <img src="image/dps-uiscale.png" alt="DPS panel with the UI scale control" width="300">
 
 ## Controls
+- **F1** — toggle the control center / hub (configurable: `HubUI.ToggleKey`)
 - **F9** — toggle the DPS panel (configurable: `ToggleKey`)
 - **F10** — toggle the damage-taken panel (configurable: `TakenUI.ToggleKey`)
 - **F11** — toggle the stage-compare panel (configurable: `CompareUI.ToggleKey`)
 - **F6** — toggle the farming planner (configurable: `FarmUI.ToggleKey`)
 - **F5** — toggle the box log (configurable: `BoxUI.ToggleKey`)
+- **F4** — toggle the opened-box stats panel (configurable: `BoxOpenUI.ToggleKey`)
+- **F3** — toggle the loot heatmap (configurable: `LootMapUI.ToggleKey`)
 - **Mouse drag** — move a panel (positions saved independently)
 - **Reset** button (top-right) zeroes the meter; **◀ ▶** browse past-stage records
 - **PageUp / PageDown** — adjust panel opacity; **Ctrl + PageUp / PageDown** — scale all panels
