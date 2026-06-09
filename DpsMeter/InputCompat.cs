@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using UnityEngine;
 
 namespace TbhDpsMeter
@@ -43,6 +44,17 @@ namespace TbhDpsMeter
         [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr GetModuleHandle(string lpModuleName);
 
+        // Message pump for the dedicated hook thread (WH_MOUSE_LL delivers callbacks via the installing
+        // thread's message queue — running it off the Unity main thread is what keeps high-polling-rate
+        // mice from stuttering the game).
+        [StructLayout(LayoutKind.Sequential)] private struct MSG { public IntPtr hwnd; public uint message; public IntPtr wParam; public IntPtr lParam; public uint time; public POINT pt; }
+        [DllImport("user32.dll")] private static extern int GetMessage(out MSG lpMsg, IntPtr hWnd, uint min, uint max);
+        [DllImport("user32.dll")] private static extern bool TranslateMessage(ref MSG lpMsg);
+        [DllImport("user32.dll")] private static extern IntPtr DispatchMessage(ref MSG lpMsg);
+        [DllImport("user32.dll")] private static extern bool PostThreadMessage(uint idThread, uint Msg, IntPtr wParam, IntPtr lParam);
+        [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+        private const uint WM_QUIT = 0x0012;
+
         private const int WH_MOUSE_LL = 14;
         private const int HC_ACTION = 0;
         private const int WM_LBUTTONDOWN = 0x0201, WM_LBUTTONUP = 0x0202, WM_LBUTTONDBLCLK = 0x0203;
@@ -58,6 +70,11 @@ namespace TbhDpsMeter
         private static float _sx = 1f, _sy = 1f;
         private static IntPtr _window;
         private static string _windowSource = "none";
+
+        // Snapshot of Unity/window state the hook thread may read (it must NOT touch Unity APIs like
+        // Screen.* or mutate _window). Refreshed every frame by Poll() on the main thread.
+        private static volatile int _scrW = 1, _scrH = 1;
+        private static IntPtr _hookGameHwnd;
 
         private static Vector2 _pos;
         private static bool _down, _pressed, _released;
@@ -103,6 +120,8 @@ namespace TbhDpsMeter
         private static IntPtr _hookHandle = IntPtr.Zero;
         private static HookProc _hookProc;   // keep a managed ref alive so the GC can't collect the thunk
         private static bool _hookTried;
+        private static Thread _hookThread;
+        private static uint _hookThreadId;
 
         private static void EnsureMouseHook()
         {
@@ -110,19 +129,44 @@ namespace TbhDpsMeter
             _hookTried = true;
             try
             {
+                // Install + pump the WH_MOUSE_LL hook on its OWN thread. A low-level hook is dispatched
+                // through the installing thread's message queue and BLOCKS system-wide mouse delivery
+                // until the callback returns; on the Unity main thread that means high-Hz mice (500–
+                // 1000Hz) pile up behind the frame loop and stutter. A dedicated pump processes each
+                // event in microseconds, decoupled from rendering.
                 _hookProc = MouseHookCallback;
-                _hookHandle = SetWindowsHookEx(WH_MOUSE_LL, _hookProc, GetModuleHandle(null), 0);
-                Plugin.Logger?.LogInfo(_hookHandle != IntPtr.Zero
-                    ? "Mouse click-through guard installed (WH_MOUSE_LL)."
-                    : "WH_MOUSE_LL install failed; panels will still pass clicks through.");
+                _hookThread = new Thread(HookThreadProc) { IsBackground = true, Name = "TbhMouseHook" };
+                _hookThread.Start();
             }
             catch (Exception e) { Plugin.Logger?.LogWarning("mouse hook ex: " + e.Message); }
+        }
+
+        private static void HookThreadProc()
+        {
+            try
+            {
+                _hookThreadId = GetCurrentThreadId();
+                _hookHandle = SetWindowsHookEx(WH_MOUSE_LL, _hookProc, GetModuleHandle(null), 0);
+                Plugin.Logger?.LogInfo(_hookHandle != IntPtr.Zero
+                    ? "Mouse click-through guard installed (WH_MOUSE_LL, dedicated thread)."
+                    : "WH_MOUSE_LL install failed; panels will still pass clicks through.");
+                if (_hookHandle == IntPtr.Zero) return;
+                // pump until WM_QUIT (posted by UninstallMouseHook)
+                while (GetMessage(out var msg, IntPtr.Zero, 0, 0) > 0)
+                {
+                    TranslateMessage(ref msg);
+                    DispatchMessage(ref msg);
+                }
+            }
+            catch (Exception e) { Plugin.Logger?.LogWarning("[hook] thread ex: " + e.Message); }
         }
 
         /// <summary>Remove the hook (call on shutdown so we don't leave a global hook dangling).</summary>
         public static void UninstallMouseHook()
         {
             try { if (_hookHandle != IntPtr.Zero) { UnhookWindowsHookEx(_hookHandle); _hookHandle = IntPtr.Zero; } }
+            catch { }
+            try { if (_hookThreadId != 0) PostThreadMessage(_hookThreadId, WM_QUIT, IntPtr.Zero, IntPtr.Zero); }
             catch { }
         }
 
@@ -177,15 +221,16 @@ namespace TbhDpsMeter
         /// <summary>Map a desktop point to IMGUI/GUI coords (same basis as the cursor in Poll()).</summary>
         private static bool ScreenToGuiPoint(int screenX, int screenY, out Vector2 gui)
         {
+            // Hook-thread safe: cached handle + cached screen size (no Unity API, no _window mutation).
             gui = default;
-            IntPtr h = ResolveGameWindow();
+            IntPtr h = _hookGameHwnd;
             if (h == IntPtr.Zero) return false;
             var p = new POINT { X = screenX, Y = screenY };
             ScreenToClient(h, ref p);
             int cw = _cw, ch = _ch;
             if (GetClientRect(h, out var rc)) { cw = rc.Right - rc.Left; ch = rc.Bottom - rc.Top; }
-            float fx = cw > 0 ? (float)Screen.width / cw : 1f;
-            float fy = ch > 0 ? (float)Screen.height / ch : 1f;
+            float fx = cw > 0 ? (float)_scrW / cw : 1f;
+            float fy = ch > 0 ? (float)_scrH / ch : 1f;
             gui = new Vector2(p.X * fx, p.Y * fy);
             return true;
         }
@@ -219,6 +264,8 @@ namespace TbhDpsMeter
                     _sx = _cw > 0 ? (float)Screen.width / _cw : 1f;
                     _sy = _ch > 0 ? (float)Screen.height / _ch : 1f;
                     _pos = new Vector2(cp.X * _sx, cp.Y * _sy);
+                    // hand the hook thread a fresh snapshot (it can't read Unity APIs itself)
+                    _hookGameHwnd = h; _scrW = Screen.width; _scrH = Screen.height;
                 }
 
                 if (_hookHandle != IntPtr.Zero)
@@ -248,11 +295,12 @@ namespace TbhDpsMeter
         /// mouse hook so it never swallows clicks destined for other applications.</summary>
         private static bool GameIsForeground()
         {
+            // Runs on the hook thread: use the cached handle (set by Poll on the main thread), never
+            // ResolveGameWindow() — that mutates _window and would race the main thread.
             try
             {
                 IntPtr fg = GetForegroundWindow();
-                if (fg == IntPtr.Zero) return false;
-                IntPtr game = ResolveGameWindow();
+                IntPtr game = _hookGameHwnd;
                 return game != IntPtr.Zero && fg == game;
             }
             catch { return false; }
