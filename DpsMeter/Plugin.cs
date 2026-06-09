@@ -14,7 +14,7 @@ namespace TbhDpsMeter
     {
         public const string Guid = "tbh.dpsmeter";
         public const string Name = "TBH DPS Meter";
-        public const string Version = "0.5.9";
+        public const string Version = "0.6.0";
 
         public static DpsTracker Tracker;
         public static DamageTakenTracker TakenTracker;
@@ -30,6 +30,7 @@ namespace TbhDpsMeter
         public static ConfigEntry<float> Opacity;
         public static ConfigEntry<bool> StartVisible;
         public static ConfigEntry<int> FontSize;
+        public static ConfigEntry<float> UIScale;
         public static ConfigEntry<float> WindowSeconds;
         public static ConfigEntry<bool> DebugDamage;
         public static ConfigEntry<bool> AutoCheckUpdate;
@@ -85,6 +86,7 @@ namespace TbhDpsMeter
             Opacity = Config.Bind("UI", "Opacity", 0.35f, "Background opacity 0..1 (PageUp/PageDown to adjust live).");
             StartVisible = Config.Bind("UI", "StartVisible", true, "Show the overlay on launch.");
             FontSize = Config.Bind("UI", "FontSize", 15, "Base font size.");
+            UIScale = Config.Bind("UI", "UIScale", 1.0f, "Global overlay scale (0.6–1.5). Panels auto-shrink further if they'd exceed the screen. Adjust live with Ctrl+PageUp/PageDown or the DPS panel's −/+ control.");
             WindowSeconds = Config.Bind("Meter", "LiveWindowSeconds", 5f, "Sliding window length for the live DPS number.");
             _toggleKeyName = Config.Bind("General", "ToggleKey", "F9", "Key to show/hide the DPS overlay (UnityEngine.KeyCode name).");
             DebugDamage = Config.Bind("Debug", "LogDamageSamples", false, "Log the first damage hits to verify the hook is correct.");

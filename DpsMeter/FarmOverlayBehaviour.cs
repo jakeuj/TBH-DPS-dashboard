@@ -62,6 +62,8 @@ namespace TbhDpsMeter
         private int _page;
 
         private Rect _closeRect, _handleRect, _goldHdr, _expHdr, _clearHdr, _pagePrev, _pageNext, _resetRect;
+        private float _scale = 1f;
+        private Rect ScaledRect() => new Rect(_rect.x, _rect.y, _rect.width * _scale, _rect.height * _scale);
         private bool _confirmReset;
         private readonly List<Rect> _chipRects = new List<Rect>();
         private readonly List<string> _chipKeys = new List<string>();
@@ -88,7 +90,7 @@ namespace TbhDpsMeter
         {
             try
             {
-                InputCompat.SetPanel(3, _visible && !GameUiState.MenuOpen(), _rect);
+                InputCompat.SetPanel(3, _visible && !GameUiState.MenuOpen(), ScaledRect());
                 if (InputCompat.KeyPressed(Plugin.FarmToggleKey))
                 {
                     _visible = !_visible;
@@ -129,7 +131,7 @@ namespace TbhDpsMeter
         private void HandlePointer()
         {
             if (GameUiState.MenuOpen()) { if (_dragging) { _dragging = false; InputCompat.ReleaseDrag(3); } return; }
-            Vector2 m = InputCompat.MouseGuiPos();
+            Vector2 m = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
             if (InputCompat.MousePressed())
             {
                 if (_closeRect.Contains(m)) { _visible = false; _confirmReset = false; return; }
@@ -212,6 +214,7 @@ namespace TbhDpsMeter
         {
             if (!_visible || GameUiState.MenuOpen()) return;   // hide while a game menu is open
             GUI.depth = -12;   // on top of F9/F10/F11
+            var prevM = GUI.matrix;
             try
             {
                 EnsureAssets();
@@ -233,12 +236,14 @@ namespace TbhDpsMeter
                 float bodyH = lh /*title*/ + lh /*note*/ + (_calib.HasData ? lh : 0) /*basis*/ + lh /*chips*/ + lh /*header*/ + lh * Mathf.Max(shown, 1) + lh /*footer*/;
                 float h = Pad + bodyH + Pad;
                 _rect.height = h;
+                _scale = UiScale.Fit(_rect.width, _rect.height);
                 if (!_dragging)
                 {
-                    _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width));
-                    _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height));
+                    _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width * _scale));
+                    _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height * _scale));
                 }
                 x = _rect.x; ix = x + Pad;
+                GUI.matrix = UiScale.Matrix(_rect.x, _rect.y, _scale);
                 GUI.Box(_rect, GUIContent.none, _box);
 
                 float cy = _rect.y + Pad;
@@ -360,6 +365,7 @@ namespace TbhDpsMeter
                 GUI.Label(new Rect(ix + 64, cy, iw - 64, lh), $"<size=11><color=#9fb4cc>{_page + 1}/{pages}　{filtered.Count} {Loc.G("stage_col")}</color></size>", _dim);
             }
             catch { }
+            finally { GUI.matrix = prevM; }
         }
 
         /// <summary>Seconds as m:ss (e.g. 307 -> 5:07), like the wiki.</summary>

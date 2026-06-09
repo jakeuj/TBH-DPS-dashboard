@@ -28,6 +28,8 @@ namespace TbhDpsMeter
         private bool _stylesReady;
 
         private Rect _stagePrev, _stageNext, _runPrev, _runNext, _pinRect, _delRect, _closeRect, _handleRect, _resetAllRect;
+        private float _scale = 1f;
+        private Rect ScaledRect() => new Rect(_rect.x, _rect.y, _rect.width * _scale, _rect.height * _scale);
         private bool _confirmReset;
         private readonly List<Rect> _charTabs = new List<Rect>();
         private int _charIndex;
@@ -67,7 +69,7 @@ namespace TbhDpsMeter
             try
             {
                 InputCompat.Poll();
-                InputCompat.SetPanel(2, _visible && !GameUiState.MenuOpen(), _rect);
+                InputCompat.SetPanel(2, _visible && !GameUiState.MenuOpen(), ScaledRect());
                 if (InputCompat.KeyPressed(Plugin.CompareToggleKey))
                 {
                     _visible = !_visible;
@@ -124,7 +126,7 @@ namespace TbhDpsMeter
         private void HandlePointer()
         {
             if (GameUiState.MenuOpen()) { if (_dragging) { _dragging = false; InputCompat.ReleaseDrag(2); } return; }
-            Vector2 m = InputCompat.MouseGuiPos();
+            Vector2 m = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
             if (InputCompat.MousePressed())
             {
                 if (_closeRect.Contains(m)) { _visible = false; _confirmReset = false; return; }
@@ -254,6 +256,7 @@ namespace TbhDpsMeter
         {
             if (!_visible || GameUiState.MenuOpen()) return;   // hide while a game menu is open
             GUI.depth = -10;   // lower depth renders on top of the F9/F10 panels
+            var prevM = GUI.matrix;
             try
             {
                 EnsureAssets();
@@ -266,7 +269,13 @@ namespace TbhDpsMeter
                 float ix = x + Pad, iw = w - Pad * 2;
 
                 var group = CurrentGroup();
-                if (group.Count == 0) { DrawEmpty(ix, iw, lh, fs); return; }
+                if (group.Count == 0)
+                {
+                    _scale = UiScale.Fit(_rect.width, Pad + lh * 2 + Pad);
+                    GUI.matrix = UiScale.Matrix(_rect.x, _rect.y, _scale);
+                    DrawEmpty(ix, iw, lh, fs);
+                    return;
+                }
 
                 _runIndex = Mathf.Clamp(_runIndex, 0, group.Count - 1);
                 string stage = _stages[_stageIndex];
@@ -308,13 +317,15 @@ namespace TbhDpsMeter
                 float detailH = Mathf.Max(leftH, rightH);
                 float h = Pad + lh /*header*/ + lh /*stage nav*/ + chartH + 18 + lh /*run nav*/ + (hasTabs ? lh : 0) + detailH + Pad;
                 _rect.height = h;
+                _scale = UiScale.Fit(_rect.width, _rect.height);
                 // keep the WHOLE panel on-screen, but clamp from the INTENDED position so a transient
                 // window resize (opening/closing a game menu) can't permanently shove it.
                 if (!_dragging)
                 {
-                    _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width));
-                    _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height));
+                    _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width * _scale));
+                    _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height * _scale));
                 }
+                GUI.matrix = UiScale.Matrix(_rect.x, _rect.y, _scale);
                 GUI.Box(_rect, GUIContent.none, _box);
 
                 float cy = _rect.y + Pad;
@@ -429,6 +440,7 @@ namespace TbhDpsMeter
                 ry = DrawLoadout(cmp, rightColX, ry, rightColW, lh);
             }
             catch { }
+            finally { GUI.matrix = prevM; }
         }
 
         /// <summary>Dashboard: clear-time trend line for the stage. X = attempt (oldest→newest),

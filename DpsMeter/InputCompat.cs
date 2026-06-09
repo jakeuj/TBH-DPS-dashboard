@@ -334,6 +334,9 @@ namespace TbhDpsMeter
             return down && !prev;
         }
 
+        /// <summary>True while either Ctrl key is held (used to qualify hotkeys like Ctrl+PageUp).</summary>
+        public static bool CtrlHeld() => Key(0x11); // VK_CONTROL
+
         private static int Vk(KeyCode k)
         {
             if (k >= KeyCode.F1 && k <= KeyCode.F12) return 0x70 + (int)(k - KeyCode.F1); // F1=0x70

@@ -25,6 +25,9 @@ namespace TbhDpsMeter
         private Rect _soundRect, _volRect, _testRect, _pickRect, _clearSndRect;
         private bool _volDrag, _settingsOpen;
         private int _page;
+        private float _scale = 1f;
+
+        private Rect ScaledRect() => new Rect(_rect.x, _rect.y, _rect.width * _scale, _rect.height * _scale);
 
         void Awake()
         {
@@ -58,7 +61,7 @@ namespace TbhDpsMeter
                     string p = BoxSound.PendingCustomPath; BoxSound.PendingCustomPath = null;
                     if (p.Length > 0) { Plugin.BoxSoundFile.Value = p; BoxSound.ReloadCustom(); BoxSound.Play(); }
                 }
-                InputCompat.SetPanel(4, _visible && !GameUiState.MenuOpen(), _rect);
+                InputCompat.SetPanel(4, _visible && !GameUiState.MenuOpen(), ScaledRect());
                 if (InputCompat.KeyPressed(Plugin.BoxToggleKey)) _visible = !_visible;
                 if (_visible) HandlePointer();
                 else if (_dragging) _dragging = false;
@@ -69,7 +72,7 @@ namespace TbhDpsMeter
         private void HandlePointer()
         {
             if (GameUiState.MenuOpen()) { if (_dragging) { _dragging = false; InputCompat.ReleaseDrag(4); } if (_volDrag) _volDrag = false; return; }
-            Vector2 m = InputCompat.MouseGuiPos();
+            Vector2 m = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
             if (InputCompat.MousePressed())
             {
                 if (_closeRect.Contains(m)) { _visible = false; return; }
@@ -124,6 +127,7 @@ namespace TbhDpsMeter
         {
             if (!_visible || GameUiState.MenuOpen()) return;
             GUI.depth = -8;
+            var prevM = GUI.matrix;
             try
             {
                 EnsureAssets();
@@ -148,8 +152,10 @@ namespace TbhDpsMeter
                 float h = Pad + lh /*title*/ + lh /*summary*/ + (_settingsOpen ? lh * 2 : 0) /*sound + file rows*/ + (statRows > 0 ? lh * 0.4f + lh * statRows : 0)
                     + lh /*log header*/ + lh * Mathf.Max(shown, 1) + lh /*footer*/ + Pad;
                 _rect.height = h;
-                if (!_dragging) { _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width)); _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height)); }
+                _scale = UiScale.Fit(_rect.width, _rect.height);
+                if (!_dragging) { _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width * _scale)); _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height * _scale)); }
                 x = _rect.x; ix = x + Pad;
+                GUI.matrix = UiScale.Matrix(_rect.x, _rect.y, _scale);
                 GUI.Box(_rect, GUIContent.none, _box);
 
                 float cy = _rect.y + Pad;
@@ -245,6 +251,7 @@ namespace TbhDpsMeter
                 GUI.Label(new Rect(ix + 64, cy, iw - 64, lh), $"<size=11><color=#9fb4cc>{_page + 1}/{pages}</color></size>", _dim);
             }
             catch { }
+            finally { GUI.matrix = prevM; }
         }
 
         private void ApplyVolume(float mouseX)

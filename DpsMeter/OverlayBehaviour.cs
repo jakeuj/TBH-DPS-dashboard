@@ -35,7 +35,10 @@ namespace TbhDpsMeter
         private float _wantX, _wantY;   // intended position; clamped non-destructively so window resizes don't move the panel
 
         // clickable regions (set during OnGUI, hit-tested in Update via InputCompat)
-        private Rect _resetRect, _prevRect, _nextRect, _handleRect, _updRect;
+        private Rect _resetRect, _prevRect, _nextRect, _handleRect, _updRect, _scaleDownRect, _scaleUpRect;
+        private float _scale = 1f;
+
+        private Rect ScaledRect() => new Rect(_rect.x, _rect.y, _rect.width * _scale, _rect.height * _scale);
 
         private Texture2D _white, _bgTex;
         private float _bgAlphaBaked = -1f;
@@ -88,7 +91,7 @@ namespace TbhDpsMeter
             try
             {
                 Loc.MaybeRefreshAuto();
-                InputCompat.SetPanel(0, _visible && !GameUiState.MenuOpen(), _rect);
+                InputCompat.SetPanel(0, _visible && !GameUiState.MenuOpen(), ScaledRect());
                 if (Plugin.DebugSnapshot != null && Plugin.DebugSnapshot.Value) GameUiState.Diag();
                 PollStageState();
                 CharacterReader.TickBoxes();   // catch transient box drops before they auto-open
@@ -97,8 +100,9 @@ namespace TbhDpsMeter
                 if (InputCompat.TogglePressed()) _visible = !_visible;
                 if (_visible)
                 {
-                    if (InputCompat.OpacityUpPressed()) SetOpacity(_opacity + 0.1f);
-                    if (InputCompat.OpacityDownPressed()) SetOpacity(_opacity - 0.1f);
+                    bool ctrl = InputCompat.CtrlHeld();
+                    if (InputCompat.OpacityUpPressed()) { if (ctrl) UiScale.Adjust(UiScale.Step); else SetOpacity(_opacity + 0.1f); }
+                    if (InputCompat.OpacityDownPressed()) { if (ctrl) UiScale.Adjust(-UiScale.Step); else SetOpacity(_opacity - 0.1f); }
                     HandlePointer();
                 }
                 else if (_dragging) { _dragging = false; }
@@ -149,10 +153,12 @@ namespace TbhDpsMeter
             // while a game menu is open the panel is hidden — ignore the mouse so interacting with the
             // game's own UI can't accidentally grab/drag the (invisible) panel.
             if (GameUiState.MenuOpen()) { if (_dragging) { _dragging = false; InputCompat.ReleaseDrag(0); } return; }
-            Vector2 m = InputCompat.MouseGuiPos();
+            Vector2 m = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
 
             if (InputCompat.MousePressed())
             {
+                if (_scaleDownRect.Contains(m)) { UiScale.Adjust(-UiScale.Step); return; }
+                if (_scaleUpRect.Contains(m)) { UiScale.Adjust(UiScale.Step); return; }
                 if (_resetRect.Contains(m)) { ResetMeter(); return; }
                 if (_updRect.Contains(m) && Updater.State == Updater.St.Available) { Updater.DownloadAsync(); return; }
                 if (_prevRect.Contains(m)) { NavOlder(); return; }
@@ -352,6 +358,7 @@ namespace TbhDpsMeter
         {
             if (!_visible || GameUiState.MenuOpen()) return;   // hide while a game menu is open
             GUI.depth = 10;   // below the F11 compare panel
+            var prevM = GUI.matrix;
             try
             {
                 EnsureAssets();
@@ -401,22 +408,31 @@ namespace TbhDpsMeter
                     + 6 + graphH + 14 /*graph + x labels*/ + 6 + barH
                     + (legendRows > 0 ? lh * legendRows : 0) + Pad;
                 _rect.height = height;
+                _scale = UiScale.Fit(_rect.width, _rect.height);
                 // keep the panel on-screen, but clamp from the INTENDED position (not the live one) so a
                 // transient window resize (e.g. opening/closing a game menu) can't permanently shove it.
                 if (!_dragging)
                 {
-                    _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width));
-                    _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height));
+                    _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width * _scale));
+                    _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height * _scale));
                 }
+                GUI.matrix = UiScale.Matrix(_rect.x, _rect.y, _scale);
                 GUI.Box(_rect, GUIContent.none, _box);
 
                 float cy = _rect.y + Pad;
 
-                // header + Reset (clicks handled in Update via recorded rects)
+                // header row:  title  …  [−  UI NN%  +]  [Reset]   (clicks handled in Update via recorded rects)
                 _handleRect = new Rect(x, _rect.y, w - 64, lh + Pad);
-                GUI.Label(new Rect(ix, cy, iw - 56, lh), title, _title);
                 _resetRect = new Rect(x + w - 56, cy - 1, 50, lh + 2);
                 GUI.Button(_resetRect, Loc.G("reset"), _btn);
+                // UI-scale control, left of Reset (also Ctrl+PageUp/PageDown)
+                _scaleUpRect = new Rect(_resetRect.x - 6 - 18, cy, 18, lh);
+                GUI.Button(_scaleUpRect, "+", _btn);
+                float scaleLblX = _scaleUpRect.x - 50;
+                GUI.Label(new Rect(scaleLblX, cy + 1, 48, lh), $"<size=10><color=#9fb4cc>UI {UiScale.User * 100f:0}%</color></size>", _dim);
+                _scaleDownRect = new Rect(scaleLblX - 18, cy, 18, lh);
+                GUI.Button(_scaleDownRect, "−", _btn);
+                GUI.Label(new Rect(ix, cy, Mathf.Max(40f, _scaleDownRect.x - ix - 4), lh), title, _title);
                 cy += lh;
 
                 // update banner (auto-check). [download] button hit-tested in HandlePointer.
@@ -464,6 +480,7 @@ namespace TbhDpsMeter
                 DrawDistribution(ix, cy, iw, barH, parts, total, lh);
             }
             catch { }
+            finally { GUI.matrix = prevM; }
         }
 
         private void NavOlder()

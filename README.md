@@ -83,6 +83,13 @@ adjust the **volume**, **test** it, or choose your own **.wav** (a built-in two-
 
 > *Each box logged with time, stage and name; Stage Boss Boxes in blue with a separate tally.*
 
+## Display scaling
+Panels **auto-shrink** so they never run off the screen on small or low-resolution displays. Set your own
+size with the **− UI % +** control on the DPS panel's title row, or **Ctrl + PageUp / PageDown** — applied
+to every panel and saved as `UI.UIScale`.
+
+<img src="image/dps-uiscale.png" alt="DPS panel with the UI scale control" width="300">
+
 ## Controls
 - **F9** — toggle the DPS panel (configurable: `ToggleKey`)
 - **F10** — toggle the damage-taken panel (configurable: `TakenUI.ToggleKey`)
@@ -91,7 +98,7 @@ adjust the **volume**, **test** it, or choose your own **.wav** (a built-in two-
 - **F5** — toggle the box log (configurable: `BoxUI.ToggleKey`)
 - **Mouse drag** — move a panel (positions saved independently)
 - **Reset** button (top-right) zeroes the meter; **◀ ▶** browse past-stage records
-- **PageUp / PageDown** — adjust panel opacity (shared by both panels)
+- **PageUp / PageDown** — adjust panel opacity; **Ctrl + PageUp / PageDown** — scale all panels
 
 > ⚠️ Clicks **pass through** to the game (the plugin only reads the mouse, it does not capture input), so your character still acts when you click on a panel. This is expected.
 

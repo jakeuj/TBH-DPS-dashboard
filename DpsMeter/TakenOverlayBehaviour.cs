@@ -34,6 +34,8 @@ namespace TbhDpsMeter
         private float _wantX, _wantY;   // intended position; clamped non-destructively (resize-safe)
 
         private Rect _resetRect, _handleRect;
+        private float _scale = 1f;
+        private Rect ScaledRect() => new Rect(_rect.x, _rect.y, _rect.width * _scale, _rect.height * _scale);
 
         private Texture2D _white, _bgTex;
         private float _bgAlphaBaked = -1f;
@@ -67,7 +69,7 @@ namespace TbhDpsMeter
         {
             try
             {
-                InputCompat.SetPanel(1, _visible && !GameUiState.MenuOpen(), _rect);
+                InputCompat.SetPanel(1, _visible && !GameUiState.MenuOpen(), ScaledRect());
                 if (InputCompat.TogglePressed(Plugin.TakenToggleKey)) _visible = !_visible;
                 if (_visible)
                 {
@@ -100,7 +102,7 @@ namespace TbhDpsMeter
         private void HandlePointer()
         {
             if (GameUiState.MenuOpen()) { if (_dragging) { _dragging = false; InputCompat.ReleaseDrag(1); } return; }
-            Vector2 m = InputCompat.MouseGuiPos();
+            Vector2 m = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
 
             if (InputCompat.MousePressed())
             {
@@ -177,6 +179,7 @@ namespace TbhDpsMeter
         {
             if (!_visible || GameUiState.MenuOpen()) return;   // hide while a game menu is open
             GUI.depth = 10;   // below the F11 compare panel
+            var prevM = GUI.matrix;
             try
             {
                 EnsureAssets();
@@ -205,12 +208,14 @@ namespace TbhDpsMeter
                     + 6 + 12 /*attr label*/ + barH + (attrRows > 0 ? lh * attrRows : 0)
                     + Pad;
                 _rect.height = height;
+                _scale = UiScale.Fit(_rect.width, _rect.height);
                 // clamp from the intended position so a transient window resize can't permanently move it
                 if (!_dragging)
                 {
-                    _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width));
-                    _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height));
+                    _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width * _scale));
+                    _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height * _scale));
                 }
+                GUI.matrix = UiScale.Matrix(_rect.x, _rect.y, _scale);
                 GUI.Box(_rect, GUIContent.none, _box);
 
                 float cy = _rect.y + Pad;
@@ -240,6 +245,7 @@ namespace TbhDpsMeter
                 cy = DrawDistribution(ix, cy, iw, barH, s.ByAttribute, s.Total, lh, isAttribute: true);
             }
             catch { }
+            finally { GUI.matrix = prevM; }
         }
 
         private void DrawGraph(float x, float y, float w, float h, List<Sample> samples)
