@@ -20,7 +20,7 @@ const images = [dps, taken, compare, farm];
   <StatsBand locale={locale} />
   <section class="section alt" id="features"><div class="wrap">
     <div class="kicker">{dict.featuresKicker}</div>
-    <div class="h2">{dict.featuresTitle}</div>
+    <h2 class="h2">{dict.featuresTitle}</h2>
     <p class="sub">{dict.featuresSub}</p>
     {dict.features.map((f, i) => <FeatureRow feature={f} image={images[i]} reversed={i % 2 === 1} />)}
   </div></section>
