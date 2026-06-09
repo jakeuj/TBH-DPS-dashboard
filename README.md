@@ -89,6 +89,8 @@ Press **F4** for **opened-box stats** — what you actually *pull* when you open
 matrix** (count and %) over your lifetime tally shows the rarity distribution per box type (so you can see
 which boxes are worth opening), alongside a paged, time-ordered **open log**.
 
+<img src="image/boxopen-panel.png" alt="Opened-box stats panel" width="420">
+
 ## Loot Heatmap (F3)
 Press **F3** for the **loot heatmap** — two stacked **day × 24-hour** grids that reveal *when* your loot
 happens: the top grid = **box pickups** (mirrors the F5 log, blue), the bottom = **legendary-or-better opens**
@@ -96,12 +98,16 @@ happens: the top grid = **box pickups** (mirrors the F5 log, blue), the bottom =
 follows whichever stage is currently selected in the F11 compare panel, so you can line up *when you grinded*
 against *how fast you were clearing*.
 
+<img src="image/heatmap-panel.png" alt="Loot heatmap panel" width="460">
+
 ## Control Center (F1)
 Press **F1** for the **control center** — one compact hub that lists **every** panel as a toggle button
 (lit when shown, dim when hidden), so you can flip DPS, damage-taken, compare, planner, box-log, opened-box
 and loot-heatmap on/off from a single place instead of memorizing every hotkey. A tiny live summary
 (**DPS · session time · boxes opened**) sits at the top. Shown on launch by default; new panels register
 themselves automatically.
+
+<img src="image/hub-panel.png" alt="Control center / hub" width="300">
 
 ## Display scaling
 Panels **auto-shrink** so they never run off the screen on small or low-resolution displays. Set your own
