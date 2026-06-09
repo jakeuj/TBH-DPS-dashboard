@@ -192,7 +192,7 @@ namespace TbhDpsMeter
                     GUI.Label(new Rect(ix, cy, iw * 0.22f, lh), $"<color=#aeb6c2>{e.Time:HH:mm:ss}</color>", _tiny);
                     GUI.Label(new Rect(ix + iw * 0.22f, cy, iw * 0.20f, lh), $"<color=#9aa3b0>{Loc.G(kindShort[kind])}</color>", _tiny);
                     GUI.Label(new Rect(ix + iw * 0.42f, cy, iw * 0.22f, lh), $"<color={gc}>{Loc.G("grade_" + BoxGrade.KeyOf(e.Grade))}</color>", _tiny);
-                    GUI.Label(new Rect(ix + iw * 0.64f, cy, iw * 0.36f, lh), $"<color=#eaf3ee>{e.Name}</color>", _tiny);
+                    GUI.Label(new Rect(ix + iw * 0.64f, cy, iw * 0.36f, lh), $"<color=#eaf3ee>{ResolveItem(e.Name)}</color>", _tiny);
                     cy += lh;
                 }
                 if (st.Log.Count == 0) { GUI.Label(new Rect(ix, cy - lh, iw, lh), $"<color=#8a93a0>{Loc.G("box_empty")}</color>", _tiny); }
@@ -203,6 +203,21 @@ namespace TbhDpsMeter
             }
             catch { }
             finally { GUI.matrix = prevM; }
+        }
+
+        // BoxOpenLog stores a loc key like "ItemName_113003"; resolve the trailing id via the bundled
+        // item table (live-localized), falling back to the raw key if unknown.
+        private static string ResolveItem(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return "";
+            int us = key.LastIndexOf('_');
+            string digits = us >= 0 ? key.Substring(us + 1) : key;
+            if (int.TryParse(digits, out int id))
+            {
+                string nm = ItemNameStore.Get(id);
+                if (!string.IsNullOrEmpty(nm)) return nm;
+            }
+            return key;
         }
 
         private void DrawCell(float x, float y, float w, float lh, BoxOpenStats st, int kind, int grade, string gc)
