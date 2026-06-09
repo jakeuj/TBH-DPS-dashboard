@@ -74,7 +74,8 @@ namespace TbhDpsMeter
                         return;
                     }
                 }
-                if (_handleRect.Contains(m) && InputCompat.ClaimDrag(5)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
+                // drag from anywhere on the panel except the buttons (handled/returned above)
+                if (_rect.Contains(m) && InputCompat.ClaimDrag(5)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
             }
             if (_dragging)
             {
