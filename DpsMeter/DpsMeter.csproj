@@ -3,7 +3,7 @@
     <TargetFramework>net6.0</TargetFramework>
     <AssemblyName>TBH.DpsMeter</AssemblyName>
     <Product>TBH DPS Meter</Product>
-    <Version>0.5.8</Version>
+    <Version>0.5.9</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>

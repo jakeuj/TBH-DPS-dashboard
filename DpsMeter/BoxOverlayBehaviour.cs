@@ -21,7 +21,7 @@ namespace TbhDpsMeter
         private GUIStyle _title, _label, _dim, _tiny, _btn, _box, _col;
         private bool _stylesReady;
 
-        private Rect _closeRect, _handleRect, _pagePrev, _pageNext, _clearRect, _gearRect;
+        private Rect _closeRect, _handleRect, _pagePrev, _pageNext, _clearRect, _gearRect, _muteRect;
         private Rect _soundRect, _volRect, _testRect, _pickRect, _clearSndRect;
         private bool _volDrag, _settingsOpen;
         private int _page;
@@ -73,6 +73,7 @@ namespace TbhDpsMeter
             if (InputCompat.MousePressed())
             {
                 if (_closeRect.Contains(m)) { _visible = false; return; }
+                if (_muteRect.Contains(m)) { Plugin.BoxSoundEnabled.Value = !Plugin.BoxSoundEnabled.Value; return; }
                 if (_gearRect.Contains(m)) { _settingsOpen = !_settingsOpen; return; }
                 if (_clearRect.Contains(m)) { BoxTracker.Events.Clear(); BoxTracker.Version++; _page = 0; return; }
                 if (_settingsOpen && _soundRect.Contains(m)) { Plugin.BoxSoundEnabled.Value = !Plugin.BoxSoundEnabled.Value; return; }
@@ -154,7 +155,12 @@ namespace TbhDpsMeter
                 float cy = _rect.y + Pad;
                 _handleRect = new Rect(x, _rect.y, w, lh);
                 float clearW = Mathf.Max(60f, _btn.CalcSize(new GUIContent(Loc.G("reset_all"))).x + 12f);
-                GUI.Label(new Rect(ix, cy, w - Pad - clearW - 56 - ix + x, lh), $"{Loc.G("box_title")}  <size=11><color=#9fb4cc>{ev.Count}</color></size>", _title);
+                GUI.Label(new Rect(ix, cy, w - Pad - clearW - 82 - ix + x, lh), $"{Loc.G("box_title")}  <size=11><color=#9fb4cc>{ev.Count}</color></size>", _title);
+                // one-click mute toggle (♪ with a red bar when muted); stays in sync with the ⚙ on/off
+                bool sndOn = Plugin.BoxSoundEnabled.Value;
+                _muteRect = new Rect(x + w - 28 - clearW - 52, cy - 1, 22, lh);
+                GUI.Button(_muteRect, sndOn ? "<color=#bfe3ff>♪</color>" : "<color=#ff8a8a>♪</color>", _btn);
+                if (!sndOn) DrawRect(_muteRect.x + 3, _muteRect.y + lh * 0.5f - 1, _muteRect.width - 6, 2, new Color(1f, 0.45f, 0.45f, 0.95f));
                 _gearRect = new Rect(x + w - 28 - clearW - 26, cy - 1, 22, lh); GUI.Button(_gearRect, _settingsOpen ? "<color=#ffd95a>⚙</color>" : "⚙", _btn);
                 _clearRect = new Rect(x + w - 28 - clearW, cy - 1, clearW, lh); GUI.Button(_clearRect, Loc.G("reset_all"), _btn);
                 _closeRect = new Rect(x + w - 26, cy - 2, 22, lh); GUI.Button(_closeRect, "✕", _btn);
