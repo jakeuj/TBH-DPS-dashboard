@@ -114,7 +114,12 @@ class Program
     static string TN(Type t)
     {
         if (t == null) return "?";
-        var n = t.Name;
-        return n;
+        if (t.IsGenericType)
+        {
+            var n = t.Name; int tick = n.IndexOf('`');
+            if (tick >= 0) n = n.Substring(0, tick);
+            return n + "<" + string.Join(", ", t.GetGenericArguments().Select(TN)) + ">";
+        }
+        return t.Name;
     }
 }

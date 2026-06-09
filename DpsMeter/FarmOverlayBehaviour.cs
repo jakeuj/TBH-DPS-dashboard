@@ -61,7 +61,8 @@ namespace TbhDpsMeter
         private string _diff = "";          // "" = all difficulties
         private int _page;
 
-        private Rect _closeRect, _handleRect, _goldHdr, _expHdr, _clearHdr, _pagePrev, _pageNext;
+        private Rect _closeRect, _handleRect, _goldHdr, _expHdr, _clearHdr, _pagePrev, _pageNext, _resetRect;
+        private bool _confirmReset;
         private readonly List<Rect> _chipRects = new List<Rect>();
         private readonly List<string> _chipKeys = new List<string>();
         private static readonly string[] Difficulties = { "", "NORMAL", "NIGHTMARE", "HELL", "TORMENT" };
@@ -107,10 +108,11 @@ namespace TbhDpsMeter
             // read current hero levels from the save so retention works even before a fresh run
             int curLevel = 0;
             try { SaveGearReader.ReadParty(); foreach (var lv in SaveGearReader.LastHeroLevels.Values) if (lv > curLevel) curLevel = lv; } catch { }
-            // fingerprint the CURRENT live loadout so calibration uses only same-build runs
-            string curSig = null;
-            try { var live = new RunRecord(); live.Party.AddRange(CharacterReader.CaptureParty()); curSig = FarmPlanner.BuildSignature(live); } catch { }
-            _rows.AddRange(FarmPlanner.Rank(FarmDataStore.Stages, RunStore.LoadAll(), out _calib, curLevel, curSig));
+            // Calibrate against the build of your MOST RECENT run (Rank's default when no sig is passed),
+            // not a live capture — a live capture taken while you're reshuffling the party is unstable and
+            // would strand the planner at ×1.00. Your last actually-cleared run reflects your real build,
+            // so after any party/gear change it self-recovers as soon as you clear one stage.
+            _rows.AddRange(FarmPlanner.Rank(FarmDataStore.Stages, RunStore.LoadAll(), out _calib, curLevel));
             FarmPlanner.Sort(_rows, _sort);
             _loaded = true;
             _page = 0;
@@ -130,7 +132,14 @@ namespace TbhDpsMeter
             Vector2 m = InputCompat.MouseGuiPos();
             if (InputCompat.MousePressed())
             {
-                if (_closeRect.Contains(m)) { _visible = false; return; }
+                if (_closeRect.Contains(m)) { _visible = false; _confirmReset = false; return; }
+                if (_resetRect.Contains(m))
+                {
+                    if (_confirmReset) { RunStore.DeleteAll(); _confirmReset = false; _page = 0; Reload(); }
+                    else _confirmReset = true;
+                    return;
+                }
+                _confirmReset = false;   // any other click cancels a pending reset
                 if (_goldHdr.Contains(m)) { SetSort(FarmSortKey.GoldPerSec); return; }
                 if (_expHdr.Contains(m)) { SetSort(FarmSortKey.ExpPerSec); return; }
                 if (_clearHdr.Contains(m)) { SetSort(FarmSortKey.ClearSec); return; }
@@ -235,9 +244,12 @@ namespace TbhDpsMeter
                 float cy = _rect.y + Pad;
                 _handleRect = new Rect(x, _rect.y, w, lh);
 
-                // title + your-multiplier + close
+                // title + your-multiplier + reset + close
                 string mult = _calib.HasData ? $"  <size=11><color=#9fb4cc>{Loc.G("your_mult")} ×{_calib.MGold:0.00}</color></size>" : "";
-                GUI.Label(new Rect(ix, cy, iw - 28, lh), $"{Loc.G("farm_title")}{mult}", _title);
+                float resetW = Mathf.Max(60f, _btn.CalcSize(new GUIContent(_confirmReset ? Loc.G("confirm_reset") : Loc.G("reset_all"))).x + 12f);
+                GUI.Label(new Rect(ix, cy, w - Pad - resetW - 30 - ix + x, lh), $"{Loc.G("farm_title")}{mult}", _title);
+                _resetRect = new Rect(x + w - 28 - resetW, cy - 1, resetW, lh);
+                GUI.Button(_resetRect, _confirmReset ? Loc.G("confirm_reset") : Loc.G("reset_all"), _btn);
                 _closeRect = new Rect(x + w - 26, cy - 2, 22, lh);
                 GUI.Button(_closeRect, "✕", _btn);
                 cy += lh;

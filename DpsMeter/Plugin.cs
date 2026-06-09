@@ -14,7 +14,7 @@ namespace TbhDpsMeter
     {
         public const string Guid = "tbh.dpsmeter";
         public const string Name = "TBH DPS Meter";
-        public const string Version = "0.5.7";
+        public const string Version = "0.5.8";
 
         public static DpsTracker Tracker;
         public static DamageTakenTracker TakenTracker;
@@ -57,10 +57,21 @@ namespace TbhDpsMeter
         public static ConfigEntry<bool> FarmStartVisible;
         private static ConfigEntry<string> _farmToggleKeyName;
 
+        // box-log panel config
+        public static ConfigEntry<float> BoxPosX;
+        public static ConfigEntry<float> BoxPosY;
+        public static ConfigEntry<float> BoxPanelWidth;
+        public static ConfigEntry<bool> BoxStartVisible;
+        private static ConfigEntry<string> _boxToggleKeyName;
+        public static ConfigEntry<bool> BoxSoundEnabled;
+        public static ConfigEntry<float> BoxSoundVolume;
+        public static ConfigEntry<string> BoxSoundFile;
+
         public static KeyCode ToggleKey = KeyCode.F9;
         public static KeyCode TakenToggleKey = KeyCode.F10;
         public static KeyCode CompareToggleKey = KeyCode.F11;
         public static KeyCode FarmToggleKey = KeyCode.F6;
+        public static KeyCode BoxToggleKey = KeyCode.F5;
 
         private static int _dbgCount;
 
@@ -102,6 +113,15 @@ namespace TbhDpsMeter
             FarmStartVisible = Config.Bind("FarmUI", "StartVisible", false, "Show the farming-planner overlay on launch.");
             _farmToggleKeyName = Config.Bind("FarmUI", "ToggleKey", "F6", "Key to show/hide the farming-planner overlay (UnityEngine.KeyCode name).");
 
+            BoxPosX = Config.Bind("BoxUI", "PosX", -1f, "Box-log overlay X (auto-saved when dragged). -1 = auto.");
+            BoxPosY = Config.Bind("BoxUI", "PosY", -1f, "Box-log overlay Y (auto-saved when dragged). -1 = auto.");
+            BoxPanelWidth = Config.Bind("BoxUI", "PanelWidth", 420f, "Box-log overlay panel width in pixels.");
+            BoxStartVisible = Config.Bind("BoxUI", "StartVisible", false, "Show the box-log overlay on launch.");
+            _boxToggleKeyName = Config.Bind("BoxUI", "ToggleKey", "F5", "Key to show/hide the box-log overlay (UnityEngine.KeyCode name).");
+            BoxSoundEnabled = Config.Bind("BoxUI", "SoundEnabled", true, "Play a sound when a box is picked up.");
+            BoxSoundVolume = Config.Bind("BoxUI", "SoundVolume", 0.6f, "Box pickup sound volume (0..1). Adjustable live in the F5 panel.");
+            BoxSoundFile = Config.Bind("BoxUI", "SoundFile", "", "Optional path to a custom .wav to play on box pickup. Blank = built-in beep.");
+
             if (!Enum.TryParse(_toggleKeyName.Value, true, out ToggleKey))
                 ToggleKey = KeyCode.F9;
             if (!Enum.TryParse(_takenToggleKeyName.Value, true, out TakenToggleKey))
@@ -110,6 +130,8 @@ namespace TbhDpsMeter
                 CompareToggleKey = KeyCode.F11;
             if (!Enum.TryParse(_farmToggleKeyName.Value, true, out FarmToggleKey))
                 FarmToggleKey = KeyCode.F6;
+            if (!Enum.TryParse(_boxToggleKeyName.Value, true, out BoxToggleKey))
+                BoxToggleKey = KeyCode.F5;
 
             Tracker = new DpsTracker(WindowSeconds.Value);
             TakenTracker = new DamageTakenTracker(WindowSeconds.Value);
@@ -126,6 +148,7 @@ namespace TbhDpsMeter
                 ClassInjector.RegisterTypeInIl2Cpp<TakenOverlayBehaviour>();
                 ClassInjector.RegisterTypeInIl2Cpp<CompareOverlayBehaviour>();
                 ClassInjector.RegisterTypeInIl2Cpp<FarmOverlayBehaviour>();
+                ClassInjector.RegisterTypeInIl2Cpp<BoxOverlayBehaviour>();
                 var go = new GameObject("TbhDpsOverlay");
                 UnityEngine.Object.DontDestroyOnLoad(go);
                 go.hideFlags = HideFlags.HideAndDontSave;
@@ -133,7 +156,8 @@ namespace TbhDpsMeter
                 go.AddComponent<TakenOverlayBehaviour>();
                 go.AddComponent<CompareOverlayBehaviour>();
                 go.AddComponent<FarmOverlayBehaviour>();
-                Logger.LogInfo("Overlays created. DPS " + ToggleKey + ", taken " + TakenToggleKey + ", compare " + CompareToggleKey + ", farm " + FarmToggleKey + ".");
+                go.AddComponent<BoxOverlayBehaviour>();
+                Logger.LogInfo("Overlays created. DPS " + ToggleKey + ", taken " + TakenToggleKey + ", compare " + CompareToggleKey + ", farm " + FarmToggleKey + ", box " + BoxToggleKey + ".");
             }
             catch (Exception ex)
             {

@@ -211,6 +211,8 @@ namespace TbhDpsMeter
             try { state = (int)_stage.stageState; }
             catch { _stage = null; return; }
 
+            BoxTracker.Tick(_stage);   // subscribe to OnGetBox on this stage instance (once)
+
             if (state == _lastState) return;
             _lastState = state;
 
