@@ -2,13 +2,13 @@
 
 **English** · [日本語](README.ja.md) · [繁體中文](README.zh-Hant.md) · [简体中文](README.zh-Hans.md)
 
-In-game **DPS / damage-taken / stage-compare / farming-planner** overlay for **TaskBarHero**
+In-game **DPS / damage-taken / stage-compare / farming-planner / box-log** overlay for **TaskBarHero**
 (TBH: Task Bar Hero), built as a BepInEx 6 IL2CPP plugin. Tested on game **v1.00.09** (Unity 6 / IL2CPP).
 UI auto-detects **English / 日本語 / 繁體中文 / 简体中文 / Español**.
 
 > ⬇️ **Players: just download the zip from [Releases](../../releases/latest) — no compiling needed.**
 
-![In-game overlay — DPS, damage-taken and stage-compare panels](image/TaskBarHero_MS3KA9KGlR.jpg)
+![In-game overlay — DPS, stage-compare, farming-planner, damage-taken and box-log panels](image/overview.png)
 
 <table>
 <tr>
@@ -71,11 +71,22 @@ A **basis** line shows what the calibration rests on (runs · stages · level ·
 
 > *Every stage ranked by your real gold/sec & exp/sec; green = measured, grey = estimated from your personal multiplier; the **Keep** column is the in-game EXP-retention penalty.*
 
+## Box Log (F5)
+Press **F5** for the **treasure-box log**: every box pickup recorded with **time · stage · box name**.
+**Stage Boss Boxes** show in **blue** and get their own **boss-box tally**, alongside per-stage counts
+and a boxes-per-hour rate. A **sound** plays on every pickup — open the **⚙ settings** to toggle it,
+adjust the **volume**, **test** it, or choose your own **.wav** (a built-in two-note chime by default).
+
+<img src="image/box-panel.png" alt="Box log panel" width="420">
+
+> *Each box logged with time, stage and name; Stage Boss Boxes in blue with a separate tally.*
+
 ## Controls
 - **F9** — toggle the DPS panel (configurable: `ToggleKey`)
 - **F10** — toggle the damage-taken panel (configurable: `TakenUI.ToggleKey`)
 - **F11** — toggle the stage-compare panel (configurable: `CompareUI.ToggleKey`)
 - **F6** — toggle the farming planner (configurable: `FarmUI.ToggleKey`)
+- **F5** — toggle the box log (configurable: `BoxUI.ToggleKey`)
 - **Mouse drag** — move a panel (positions saved independently)
 - **Reset** button (top-right) zeroes the meter; **◀ ▶** browse past-stage records
 - **PageUp / PageDown** — adjust panel opacity (shared by both panels)

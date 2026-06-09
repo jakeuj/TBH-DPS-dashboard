@@ -2,13 +2,13 @@
 
 [English](README.md) · [日本語](README.ja.md) · [繁體中文](README.zh-Hant.md) · **简体中文**
 
-**TaskBarHero**（TBH: Task Bar Hero）的游戏内 **DPS / 承受伤害 / 关卡比较 / 刷关效率** 监控插件，
+**TaskBarHero**（TBH: Task Bar Hero）的游戏内 **DPS / 承受伤害 / 关卡比较 / 刷关效率 / 宝箱记录** 监控插件，
 以 BepInEx 6 IL2CPP 插件实现。测试版本 **v1.00.09**（Unity 6 / IL2CPP）。
 界面自动检测 **繁體中文 / 简体中文 / English / 日本語 / Español**。
 
 > ⬇️ **普通玩家只要到 [Releases](../../releases/latest) 下载 zip 就能用，不用编译。**
 
-![游戏内叠加面板 — DPS、承受伤害与关卡比较三面板](image/TaskBarHero_MS3KA9KGlR.jpg)
+![游戏内叠加面板 — DPS、关卡比较、刷关效率、承受伤害与宝箱记录](image/overview.png)
 
 <table>
 <tr>
@@ -62,11 +62,21 @@
 
 > *每一关依你的真实金币/秒、经验/秒排名；绿色=实测，灰色=用你的个人倍率推估；**「保留」** 栏是游戏内的经验保留（等级降损）。*
 
+## 宝箱记录（F5）
+按 **F5** 打开**宝箱记录**：每个宝箱获取都记下**时间 · 关卡 · 名称**。**Stage Boss Box（王箱）**
+以**蓝字**显示并**单独统计**，还有每关获取数与每小时个数。每次获取会发出**提示音** —— 点 **⚙ 设置**
+可开关、调**音量**、**试听**，或选你自己的 **.wav**（默认为内建双音「叮咚」声）。
+
+<img src="image/box-panel.png" alt="宝箱记录面板" width="420">
+
+> *每个宝箱记下时间、关卡与名称；王箱以蓝字显示并单独计数。*
+
 ## 操作
 - **F9** — 显示/隐藏 DPS 面板（可设置：`ToggleKey`）
 - **F10** — 显示/隐藏 承受伤害面板（可设置：`TakenUI.ToggleKey`）
 - **F11** — 显示/隐藏 关卡比较面板（可设置：`CompareUI.ToggleKey`）
 - **F6** — 显示/隐藏 刷关效率面板（可设置：`FarmUI.ToggleKey`）
+- **F5** — 显示/隐藏 宝箱记录面板（可设置：`BoxUI.ToggleKey`）
 - **鼠标拖拽** — 移动面板（位置自动记住，两面板独立）
 - 右上 **重置** 按钮归零重算；**◀ ▶** 翻看过去关卡记录
 - **PageUp / PageDown** — 调整面板透明度（两面板共用）
