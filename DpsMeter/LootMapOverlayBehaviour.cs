@@ -4,11 +4,12 @@ using UnityEngine;
 
 namespace TbhDpsMeter
 {
-    /// <summary>IMGUI overlay (F-key, hub slot 6): the 掉寶熱力圖 / Loot Heatmap. Shows two stacked
-    /// day × 24-hour grids computed live from the box-open log — open rate (blue) and good-loot rate
-    /// (gold-green) — a summary row, and the shared clear-time trend chart (per recent run) at the
-    /// bottom. Read-only; resize-safe; drag from anywhere; auto-hides with the other panels while a
-    /// game menu is open.</summary>
+    /// <summary>IMGUI overlay (F-key, hub slot 6): the 掉寶熱力圖 / Loot Heatmap. Visualizes existing
+    /// trackers over time — two stacked day × 24-hour grids: top = F5 box pickups (BoxTracker.Events,
+    /// blue), bottom = F4 opens of legendary+ loot (BoxOpenTracker.Stats, Grade>=3, gold-green) — a
+    /// summary row, and a clear-time trend chart that follows F11's selected stage at the bottom.
+    /// Read-only; resize-safe; drag from anywhere; auto-hides with the other panels while a game menu
+    /// is open.</summary>
     public class LootMapOverlayBehaviour : MonoBehaviour
     {
         public LootMapOverlayBehaviour(IntPtr ptr) : base(ptr) { }
@@ -33,9 +34,11 @@ namespace TbhDpsMeter
         // hover tooltip target (local-space cell rect + text), filled during the grid draw
         private bool _hasTip; private Rect _tipCell; private string _tipText;
 
-        // per-run clear seconds for the trend chart, rebuilt only when RunStore.Version changes
+        // per-run clear seconds for the trend chart (F11's currently-selected stage), rebuilt when
+        // RunStore.Version OR the resolved stage changes
         private readonly List<float> _trend = new List<float>();
         private int _trendVersion = -1;
+        private string _trendStage;
 
         private Rect ScaledRect() => new Rect(_rect.x, _rect.y, _rect.width * _scale, _rect.height * _scale);
 
@@ -112,18 +115,28 @@ namespace TbhDpsMeter
             return Color.Lerp(lo, hi, t);
         }
 
-        // Per-run clear seconds for the trend chart (chronological), most-recent ~30 runs.
-        // Rebuilt only when RunStore.Version changes.
+        // Per-run clear seconds for the trend chart, following F11's currently-selected stage
+        // (CompareOverlayBehaviour.ActiveStageId; falls back to the most-recent run's stage).
+        // Chronological (oldest → newest), capped to the last ~40 runs of that stage.
+        // Rebuilt only when RunStore.Version OR the resolved stage changes.
         private void RebuildTrend()
         {
-            if (RunStore.Version == _trendVersion) return;
-            _trendVersion = RunStore.Version;
-            _trend.Clear();
             try
             {
                 var runs = RunStore.LoadAll();           // oldest → newest
-                int start = Mathf.Max(0, runs.Count - 30);
-                for (int i = start; i < runs.Count; i++) _trend.Add(runs[i].Duration);
+
+                string stage = CompareOverlayBehaviour.ActiveStageId;
+                if (string.IsNullOrEmpty(stage) && runs.Count > 0) stage = runs[runs.Count - 1].StageId;
+
+                if (RunStore.Version == _trendVersion && stage == _trendStage) return;
+                _trendVersion = RunStore.Version;
+                _trendStage = stage;
+                _trend.Clear();
+                if (string.IsNullOrEmpty(stage)) return;
+
+                for (int i = 0; i < runs.Count; i++)
+                    if (runs[i] != null && runs[i].StageId == stage) _trend.Add(runs[i].Duration);
+                if (_trend.Count > 40) _trend.RemoveRange(0, _trend.Count - 40);
             }
             catch { }
         }
@@ -139,10 +152,27 @@ namespace TbhDpsMeter
                 if (!_placed) PlaceDefault();
                 RebuildTrend();
 
-                // ---- single pass over the box-open log → per-day hourly opens / good buckets ----
-                var opensByDay = new Dictionary<string, long[]>();
+                // ---- TOP grid source: F5 box pickups (BoxTracker.Events) bucketed by (day, hour) ----
+                var pickupByDay = new Dictionary<string, long[]>();
+                long totalPickups = 0;
+                try
+                {
+                    var ev = BoxTracker.Events;
+                    for (int i = 0; i < ev.Count; i++)
+                    {
+                        var e = ev[i];
+                        if (e == null) continue;
+                        string day = e.Time.ToString("yyyy-MM-dd");
+                        int hh = e.Time.Hour; if (hh < 0) hh = 0; else if (hh > 23) hh = 23;
+                        if (!pickupByDay.TryGetValue(day, out var pArr)) { pArr = new long[24]; pickupByDay[day] = pArr; }
+                        pArr[hh]++; totalPickups++;
+                    }
+                }
+                catch { }
+
+                // ---- BOTTOM grid source: F4 opens with Grade>=3 (BoxOpenTracker.Stats.Log) by (day, hour) ----
                 var goodByDay = new Dictionary<string, long[]>();
-                long totalOpens = 0, totalGood = 0;
+                long totalGood = 0;
                 try
                 {
                     var log = BoxOpenTracker.Stats.Log;
@@ -151,17 +181,19 @@ namespace TbhDpsMeter
                         var e = log[i];
                         if (e == null) continue;
                         int g = e.Grade; if (g < 0) g = 0; else if (g > 9) g = 9;
+                        if (g < GoodGrade) continue;
                         string day = e.Time.ToString("yyyy-MM-dd");
                         int hh = e.Time.Hour; if (hh < 0) hh = 0; else if (hh > 23) hh = 23;
-                        if (!opensByDay.TryGetValue(day, out var oArr)) { oArr = new long[24]; opensByDay[day] = oArr; goodByDay[day] = new long[24]; }
-                        oArr[hh]++; totalOpens++;
-                        if (g >= GoodGrade) { goodByDay[day][hh]++; totalGood++; }
+                        if (!goodByDay.TryGetValue(day, out var gArr)) { gArr = new long[24]; goodByDay[day] = gArr; }
+                        gArr[hh]++; totalGood++;
                     }
                 }
                 catch { }
 
-                // sorted distinct days, newest first, capped at MaxDayRows
-                var days = new List<string>(opensByDay.Keys);
+                // sorted distinct days across BOTH grids, newest first, capped at MaxDayRows
+                var daySet = new HashSet<string>(pickupByDay.Keys);
+                foreach (var k in goodByDay.Keys) daySet.Add(k);
+                var days = new List<string>(daySet);
                 days.Sort(StringComparer.Ordinal);
                 days.Reverse();                                   // newest first
                 if (days.Count > MaxDayRows) days = days.GetRange(0, MaxDayRows);
@@ -193,9 +225,9 @@ namespace TbhDpsMeter
                 _closeRect = new Rect(x + w - 26, cy - 2, 22, lh); GUI.Button(_closeRect, "✕", _btn);
                 cy += lh;
 
-                // ---- summary row: total opens / total good ----
+                // ---- summary row: total pickups (F5) / total good loot (F4 grade>=3) ----
                 GUI.Label(new Rect(ix, cy, iw, lh),
-                    $"<color=#aeb6c2>{Loc.G("lm_total")} <color=#eaf3ee>{totalOpens}</color>　{Loc.G("metric_loot")} <color=#eaf3ee>{totalGood}</color></color>", _label);
+                    $"<color=#aeb6c2>{Loc.G("metric_pickup")} <color=#eaf3ee>{totalPickups}</color>　{Loc.G("metric_loot")} <color=#eaf3ee>{totalGood}</color></color>", _label);
                 cy += lh;
 
                 // ---- two heatmap grids (opens, then loot) ----
@@ -203,15 +235,19 @@ namespace TbhDpsMeter
                 Vector2 mLocal = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
 
                 // grid max over visible cells (own normalization per grid)
-                long maxOpens = 1, maxGood = 1;
+                long maxPickup = 1, maxGood = 1;
                 for (int r = 0; r < dayRows; r++)
                 {
-                    var oArr = opensByDay[days[r]];
-                    var gArr = goodByDay[days[r]];
-                    for (int hh = 0; hh < 24; hh++) { if (oArr[hh] > maxOpens) maxOpens = oArr[hh]; if (gArr[hh] > maxGood) maxGood = gArr[hh]; }
+                    pickupByDay.TryGetValue(days[r], out var pArr);
+                    goodByDay.TryGetValue(days[r], out var gArr);
+                    for (int hh = 0; hh < 24; hh++)
+                    {
+                        if (pArr != null && pArr[hh] > maxPickup) maxPickup = pArr[hh];
+                        if (gArr != null && gArr[hh] > maxGood) maxGood = gArr[hh];
+                    }
                 }
 
-                cy = DrawGrid(ix, cy, iw, lh, cellH, mLocal, days, dayRows, opensByDay, Loc.G("metric_opens"), maxOpens, 0);
+                cy = DrawGrid(ix, cy, iw, lh, cellH, mLocal, days, dayRows, pickupByDay, Loc.G("metric_pickup"), maxPickup, 0);
                 cy += lh * 0.4f;
                 cy = DrawGrid(ix, cy, iw, lh, cellH, mLocal, days, dayRows, goodByDay, Loc.G("metric_loot"), maxGood, 1);
 
@@ -220,7 +256,7 @@ namespace TbhDpsMeter
                 {
                     DrawRect(ix, cy + lh * 0.3f, iw, 1, new Color(1, 1, 1, 0.12f));
                     cy += lh * 0.6f;
-                    GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#9fb4cc>{Loc.G("trend")}</color>", _dim);
+                    GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#9fb4cc>{Loc.G("trend")} · {_trendStage}</color>", _dim);
                     cy += lh;
                     TrendChart.Draw(new Rect(ix, cy, iw, ChartH), _rect.x, _trend, -1, -1, _white, _tiny, null, null, "s");
                     cy += ChartH + lh;
@@ -267,10 +303,10 @@ namespace TbhDpsMeter
                 string day = days[r];
                 string shortDay = day.Length >= 10 ? day.Substring(5) : day;  // MM-DD
                 GUI.Label(new Rect(ix, gy, gutterW - 2, cellH), $"<color=#aeb6c2>{shortDay}</color>", _tiny);
-                var arr = data[day];
+                data.TryGetValue(day, out var arr);
                 for (int hh = 0; hh < 24; hh++)
                 {
-                    long v = arr[hh];
+                    long v = arr != null ? arr[hh] : 0;
                     var cr = new Rect(gridX + hh * cellW, gy, cellW - 1f, cellH - 1f);
                     DrawRect(cr.x, cr.y, cr.width, cr.height, RampColor(v / (float)maxVisible, metric));
                     if (cr.Contains(mLocal)) { _hasTip = true; _tipCell = cr; _tipText = $"{shortDay} {hh:00}:00 · {v}"; }

@@ -115,6 +115,7 @@ namespace TbhDpsMeter
             { "hub_title",      new[] { "中控台", "Control Center", "コントロール", "中控台", "Centro" } },
             { "lootmap_title",  new[] { "掉寶熱力圖", "Loot Heatmap", "ドロップ分布", "掉宝热力图", "Mapa de botín" } },
             { "metric_opens",   new[] { "開箱率", "Opens", "開封数", "开箱率", "Aperturas" } },
+            { "metric_pickup",  new[] { "寶箱獲取", "Box Pickups", "宝箱取得", "宝箱获取", "Cajas" } },
             { "metric_loot",    new[] { "掉寶率", "Loot", "良品率", "掉宝率", "Botín" } },
             { "lm_total",       new[] { "總計", "Total", "合計", "总计", "Total" } },
             { "lm_today",       new[] { "今日", "Today", "今日", "今日", "Hoy" } },

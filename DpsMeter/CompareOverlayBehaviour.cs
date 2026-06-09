@@ -42,6 +42,9 @@ namespace TbhDpsMeter
         private List<string> _stages = new List<string>();
         private readonly Dictionary<string, string> _pinned = new Dictionary<string, string>();
         private int _stageIndex;
+        /// <summary>Stage id F11 is currently focused on; the loot-heatmap panel mirrors this so its
+        /// clear-time trend follows F11's stage selection. Null until F11 has loaded runs.</summary>
+        public static string ActiveStageId;
         private int _runIndex;
         private bool _loaded;
         private int _seenVersion = -1;
@@ -120,6 +123,7 @@ namespace TbhDpsMeter
             _stageIndex = Mathf.Clamp(_stageIndex, 0, _stages.Count - 1);
             var g = new List<RunRecord>();
             string key = _stages[_stageIndex];
+            ActiveStageId = key;
             foreach (var r in _runs) if ((r.StageId ?? "") == key) g.Add(r);
             return g;
         }
