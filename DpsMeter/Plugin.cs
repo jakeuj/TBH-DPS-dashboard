@@ -14,7 +14,7 @@ namespace TbhDpsMeter
     {
         public const string Guid = "tbh.dpsmeter";
         public const string Name = "TBH DPS Meter";
-        public const string Version = "0.6.1";
+        public const string Version = "0.7.0";
 
         public static DpsTracker Tracker;
         public static DamageTakenTracker TakenTracker;
@@ -68,11 +68,19 @@ namespace TbhDpsMeter
         public static ConfigEntry<float> BoxSoundVolume;
         public static ConfigEntry<string> BoxSoundFile;
 
+        // control-center (hub) panel config
+        public static ConfigEntry<float> HubPosX;
+        public static ConfigEntry<float> HubPosY;
+        public static ConfigEntry<float> HubPanelWidth;
+        public static ConfigEntry<bool> HubStartVisible;
+        private static ConfigEntry<string> _hubToggleKeyName;
+
         public static KeyCode ToggleKey = KeyCode.F9;
         public static KeyCode TakenToggleKey = KeyCode.F10;
         public static KeyCode CompareToggleKey = KeyCode.F11;
         public static KeyCode FarmToggleKey = KeyCode.F6;
         public static KeyCode BoxToggleKey = KeyCode.F5;
+        public static KeyCode HubToggleKey = KeyCode.F1;
 
         private static int _dbgCount;
 
@@ -124,6 +132,12 @@ namespace TbhDpsMeter
             BoxSoundVolume = Config.Bind("BoxUI", "SoundVolume", 0.6f, "Box pickup sound volume (0..1). Adjustable live in the F5 panel.");
             BoxSoundFile = Config.Bind("BoxUI", "SoundFile", "", "Optional path to a custom .wav to play on box pickup. Blank = built-in beep.");
 
+            HubPosX = Config.Bind("HubUI", "PosX", -1f, "Control-center overlay X (auto-saved when dragged). -1 = auto top-left.");
+            HubPosY = Config.Bind("HubUI", "PosY", -1f, "Control-center overlay Y (auto-saved when dragged). -1 = auto top-left.");
+            HubPanelWidth = Config.Bind("HubUI", "PanelWidth", 260f, "Control-center overlay panel width in pixels.");
+            HubStartVisible = Config.Bind("HubUI", "StartVisible", true, "Show the control-center overlay on launch.");
+            _hubToggleKeyName = Config.Bind("HubUI", "ToggleKey", "F1", "Key to show/hide the control-center overlay (UnityEngine.KeyCode name).");
+
             if (!Enum.TryParse(_toggleKeyName.Value, true, out ToggleKey))
                 ToggleKey = KeyCode.F9;
             if (!Enum.TryParse(_takenToggleKeyName.Value, true, out TakenToggleKey))
@@ -134,6 +148,8 @@ namespace TbhDpsMeter
                 FarmToggleKey = KeyCode.F6;
             if (!Enum.TryParse(_boxToggleKeyName.Value, true, out BoxToggleKey))
                 BoxToggleKey = KeyCode.F5;
+            if (!Enum.TryParse(_hubToggleKeyName.Value, true, out HubToggleKey))
+                HubToggleKey = KeyCode.F1;
 
             Tracker = new DpsTracker(WindowSeconds.Value);
             TakenTracker = new DamageTakenTracker(WindowSeconds.Value);
@@ -151,6 +167,7 @@ namespace TbhDpsMeter
                 ClassInjector.RegisterTypeInIl2Cpp<CompareOverlayBehaviour>();
                 ClassInjector.RegisterTypeInIl2Cpp<FarmOverlayBehaviour>();
                 ClassInjector.RegisterTypeInIl2Cpp<BoxOverlayBehaviour>();
+                ClassInjector.RegisterTypeInIl2Cpp<HubOverlayBehaviour>();
                 var go = new GameObject("TbhDpsOverlay");
                 UnityEngine.Object.DontDestroyOnLoad(go);
                 go.hideFlags = HideFlags.HideAndDontSave;
@@ -159,7 +176,8 @@ namespace TbhDpsMeter
                 go.AddComponent<CompareOverlayBehaviour>();
                 go.AddComponent<FarmOverlayBehaviour>();
                 go.AddComponent<BoxOverlayBehaviour>();
-                Logger.LogInfo("Overlays created. DPS " + ToggleKey + ", taken " + TakenToggleKey + ", compare " + CompareToggleKey + ", farm " + FarmToggleKey + ", box " + BoxToggleKey + ".");
+                go.AddComponent<HubOverlayBehaviour>();
+                Logger.LogInfo("Overlays created. hub " + HubToggleKey + ", DPS " + ToggleKey + ", taken " + TakenToggleKey + ", compare " + CompareToggleKey + ", farm " + FarmToggleKey + ", box " + BoxToggleKey + ".");
             }
             catch (Exception ex)
             {

@@ -33,6 +33,7 @@ namespace TbhDpsMeter
         {
             _rect.width = Mathf.Max(380, Plugin.BoxPanelWidth.Value);
             _visible = Plugin.BoxStartVisible.Value;
+            PanelRegistry.Register("box", 4, () => Loc.G("box_title"), Plugin.BoxToggleKey, () => _visible, v => _visible = v);
             try
             {
                 var src = gameObject.GetComponent<AudioSource>();

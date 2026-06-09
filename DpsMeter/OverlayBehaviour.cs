@@ -71,6 +71,7 @@ namespace TbhDpsMeter
             _opacity = Mathf.Clamp01(Plugin.Opacity.Value);
             _visible = Plugin.StartVisible.Value;
             _rect.width = Mathf.Max(280, Plugin.PanelWidth.Value);
+            PanelRegistry.Register("dps", 0, () => Loc.G("dps_title"), Plugin.ToggleKey, () => _visible, v => _visible = v);
         }
 
         void Start() => PlaceDefault();
