@@ -66,6 +66,14 @@ namespace TbhDpsMeter
             for (int i = 0; i < r.TakenTypeFlags.Count; i++)
                 sb.Append("taken_type=").Append(r.TakenTypeFlags[i]).Append(':').Append(r.TakenTypeAmounts[i].ToString(Inv)).Append('\n');
 
+            var ths = new StringBuilder();
+            foreach (var s in r.TakenSamples)
+            {
+                if (ths.Length > 0) ths.Append(',');
+                ths.Append(s.Dps.ToString("0.#", Inv)).Append(':').Append(s.Wave);
+            }
+            sb.Append("taken_hist=").Append(ths).Append('\n');
+
             // character snapshots (whole party); each starts with a "char=" delimiter line
             foreach (var snap in r.Party)
             {
@@ -175,6 +183,14 @@ namespace TbhDpsMeter
                         if (ct > 0) { r.TakenTypeFlags.Add((int)D(v.Substring(0, ct))); r.TakenTypeAmounts.Add(D(v.Substring(ct + 1))); }
                         break;
                     }
+                    case "taken_hist":
+                        if (v.Length > 0)
+                            foreach (var p in v.Split(','))
+                            {
+                                int cc = p.IndexOf(':');
+                                if (cc > 0) r.TakenSamples.Add(new Sample { Dps = F(p.Substring(0, cc)), Wave = (int)D(p.Substring(cc + 1)) });
+                            }
+                        break;
                     case "char": NewChar(v); break;
                     case "snap": Snap(); break;   // legacy v2 single-character marker
                     case "stat":

@@ -33,7 +33,7 @@ namespace TbhDpsMeter
         private bool _placed;
         private float _wantX, _wantY;   // intended position; clamped non-destructively (resize-safe)
 
-        private Rect _resetRect, _handleRect;
+        private Rect _resetRect, _prevRect, _nextRect, _handleRect;
         private float _scale = 1f;
         private Rect ScaledRect() => new Rect(_rect.x, _rect.y, _rect.width * _scale, _rect.height * _scale);
 
@@ -45,6 +45,10 @@ namespace TbhDpsMeter
         private readonly List<Sample> _history = new List<Sample>(GraphCapacity + 4);
         private float _nextSampleTime;
         private int _lastSeenWave;
+
+        // review mode (mirrors the DPS panel: ◀/▶ browse saved runs)
+        private List<RunRecord> _runs = new List<RunRecord>();
+        private int _reviewIndex = -1;   // -1 = live
 
         void Awake()
         {
@@ -108,6 +112,8 @@ namespace TbhDpsMeter
             if (InputCompat.MousePressed())
             {
                 if (_resetRect.Contains(m)) { ResetMeter(); return; }
+                if (_prevRect.Contains(m)) { NavOlder(); return; }
+                if (_nextRect.Contains(m)) { NavNewer(); return; }
                 if (_rect.Contains(m) && InputCompat.ClaimDrag(1)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
             }
 
@@ -136,6 +142,48 @@ namespace TbhDpsMeter
         {
             Plugin.TakenTracker.StartEncounter(Time.time);
             _history.Clear();
+            _reviewIndex = -1;
+        }
+
+        // ◀ : step to an older saved run (entering review reloads the list so new runs show)
+        private void NavOlder()
+        {
+            if (_reviewIndex < 0)
+            {
+                _runs = RunStore.LoadAll();
+                if (_runs.Count == 0) return;
+                _reviewIndex = _runs.Count - 1;   // jump to newest saved
+                return;
+            }
+            if (_runs.Count == 0) return;
+            if (_reviewIndex > 0) _reviewIndex--;
+        }
+
+        // ▶ : step to a newer run, wrapping past the newest back to live
+        private void NavNewer()
+        {
+            if (_reviewIndex < 0) return;
+            _reviewIndex++;
+            if (_reviewIndex >= _runs.Count) _reviewIndex = -1;   // back to live
+        }
+
+        private static List<DamageTakenTracker.Part> BuildAttrParts(List<int> vals, List<double> amts, double total)
+        {
+            var parts = new List<DamageTakenTracker.Part>();
+            if (total <= 0) return parts;
+            for (int i = 0; i < vals.Count && i < amts.Count; i++)
+            {
+                if (amts[i] <= 0) continue;
+                parts.Add(new DamageTakenTracker.Part
+                {
+                    Key = vals[i],
+                    Name = DamageTakenTracker.DecodeAttribute(vals[i]),
+                    Amount = amts[i],
+                    Share = (float)(amts[i] / total),
+                });
+            }
+            parts.Sort((a, b) => b.Amount.CompareTo(a.Amount));
+            return parts;
         }
 
         // ---------------- rendering ----------------
@@ -192,18 +240,42 @@ namespace TbhDpsMeter
                 float ix = x + Pad, iw = w - Pad * 2;
                 float now = Time.time;
 
-                var s = Plugin.TakenTracker.GetSnapshot(EffectiveNow(now));
-                string dot = !IsFrozen(now) ? "<color=#FF6B5C>●</color>" : "<color=#FFC857>‖</color>";
-                string title = $"{dot} {Loc.G("taken_title")}  <size=11>{Loc.G("wave_short")}{Plugin.CurrentWave}</size>";
+                // ---- gather the view: live or a saved run ----
+                bool reviewing = _reviewIndex >= 0;
+                if (reviewing && _runs.Count == 0) { _reviewIndex = -1; reviewing = false; }
+
+                string title; float headline, peak, avg, biggest, crit, dur; double total; long hits;
+                List<DamageTakenTracker.Part> attrParts; List<Sample> samples;
+
+                if (reviewing)
+                {
+                    var r = _runs[_reviewIndex];
+                    title = $"<color=#FF9E7F>{Loc.G("review")}</color> {_reviewIndex + 1}/{_runs.Count}  {r.Title}";
+                    headline = r.TakenAvg; peak = r.TakenPeak; avg = r.TakenAvg;
+                    biggest = r.TakenBiggestHit; crit = r.TakenCritRate; dur = r.Duration;
+                    total = r.TakenTotal; hits = r.TakenHits;
+                    attrParts = BuildAttrParts(r.TakenAttrValues, r.TakenAttrAmounts, r.TakenTotal);
+                    samples = r.TakenSamples;
+                }
+                else
+                {
+                    var s = Plugin.TakenTracker.GetSnapshot(EffectiveNow(now));
+                    string dot = !IsFrozen(now) ? "<color=#FF6B5C>●</color>" : "<color=#FFC857>‖</color>";
+                    title = $"{dot} {Loc.G("taken_title")}  <size=11>{Loc.G("wave_short")}{Plugin.CurrentWave}</size>";
+                    headline = s.LiveDtps; peak = s.PeakDtps; avg = s.AvgDtps;
+                    biggest = s.BiggestHit; crit = s.CritRate; dur = s.DurationSeconds;
+                    total = s.Total; hits = s.Hits;
+                    attrParts = s.ByAttribute; samples = _history;
+                }
 
                 // ---- layout / sizing ----
                 float graphH = 64f;
                 float barH = 14f;
-                int attrRows = Mathf.CeilToInt(Mathf.Min(s.ByAttribute.Count, 6) / 2f);
+                int attrRows = Mathf.CeilToInt(Mathf.Min(attrParts.Count, 6) / 2f);
                 // NOTE: incoming (monster) damage carries no EDamageType (always None),
                 // so the type bar is meaningless for the taken panel — only the element
                 // attribute breakdown (Physical/Fire/Cold/...) is shown.
-                float height = Pad + lh /*header*/ + (fs + 12) /*big*/
+                float height = Pad + lh /*header*/ + lh /*nav*/ + (fs + 12) /*big*/
                     + lh + lh + lh /*peak/avg, total/dur, biggest/hits/crit*/
                     + 6 + graphH + 14 /*graph + x labels*/
                     + 6 + 12 /*attr label*/ + barH + (attrRows > 0 ? lh * attrRows : 0)
@@ -228,22 +300,30 @@ namespace TbhDpsMeter
                 GUI.Button(_resetRect, Loc.G("reset"), _btn);
                 cy += lh;
 
+                // nav row: ◀  (live/review)  ▶
+                _prevRect = new Rect(ix, cy, 30, lh);
+                _nextRect = new Rect(ix + 34, cy, 30, lh);
+                GUI.Button(_prevRect, "◀", _btn);
+                GUI.Button(_nextRect, "▶", _btn);
+                GUI.Label(new Rect(ix + 70, cy, iw - 70, lh), reviewing ? Loc.G("review_hint") : Loc.G("live_hint"), _dim);
+                cy += lh;
+
                 // headline DTPS
-                GUI.Label(new Rect(ix, cy, iw, fs + 12), Fmt(s.LiveDtps) + "  <size=11>" + Loc.G("per_sec_taken") + "</size>", _big);
+                GUI.Label(new Rect(ix, cy, iw, fs + 12), Fmt(headline) + "  <size=11>" + (reviewing ? Loc.G("review_tag") : Loc.G("per_sec_taken")) + "</size>", _big);
                 cy += fs + 12;
 
-                GUI.Label(new Rect(ix, cy, iw, lh), $"{Loc.G("peak")} {Fmt(s.PeakDtps)}    {Loc.G("avg")} {Fmt(s.AvgDtps)}", _label); cy += lh;
-                GUI.Label(new Rect(ix, cy, iw, lh), $"{Loc.G("total_taken")} {Fmt(s.Total)}    {Loc.G("duration")} {s.DurationSeconds:0.0}s", _label); cy += lh;
-                GUI.Label(new Rect(ix, cy, iw, lh), $"{Loc.G("biggest_hit")} {Fmt(s.BiggestHit)}    {Loc.G("hits")} {s.Hits}    {Loc.G("incoming_crit")} {s.CritRate * 100f:0.#}%", _label); cy += lh;
+                GUI.Label(new Rect(ix, cy, iw, lh), $"{Loc.G("peak")} {Fmt(peak)}    {Loc.G("avg")} {Fmt(avg)}", _label); cy += lh;
+                GUI.Label(new Rect(ix, cy, iw, lh), $"{Loc.G("total_taken")} {Fmt(total)}    {Loc.G("duration")} {dur:0.0}s", _label); cy += lh;
+                GUI.Label(new Rect(ix, cy, iw, lh), $"{Loc.G("biggest_hit")} {Fmt(biggest)}    {Loc.G("hits")} {hits}    {Loc.G("incoming_crit")} {crit * 100f:0.#}%", _label); cy += lh;
 
                 cy += 6;
-                DrawGraph(ix, cy, iw, graphH, _history);
+                DrawGraph(ix, cy, iw, graphH, samples);
                 cy += graphH + 14;
 
                 // element attribute distribution (the meaningful breakdown for incoming damage)
                 cy += 6;
                 GUI.Label(new Rect(ix, cy, iw, 12), Loc.G("element_dist"), _tiny); cy += 12;
-                cy = DrawDistribution(ix, cy, iw, barH, s.ByAttribute, s.Total, lh, isAttribute: true);
+                cy = DrawDistribution(ix, cy, iw, barH, attrParts, total, lh, isAttribute: true);
             }
             catch { }
             finally { GUI.matrix = prevM; }

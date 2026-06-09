@@ -347,6 +347,8 @@ class Tests
         r.TakenTotal = 4580; r.TakenPeak = 171; r.TakenAvg = 63; r.TakenBiggestHit = 98; r.TakenCritRate = 0f; r.TakenHits = 59;
         r.TakenAttrValues.Add(1); r.TakenAttrAmounts.Add(3000);
         r.TakenTypeFlags.Add(2); r.TakenTypeAmounts.Add(2000);
+        r.TakenSamples.Add(new Sample { Dps = 150f, Wave = 1 });
+        r.TakenSamples.Add(new Sample { Dps = 202.5f, Wave = 2 });
         var snap = new CharacterSnapshot { Captured = true };
         snap.Stats.Add(new StatEntry("attack", 1240));
         var g = new GearItem { Slot = "weapon", Name = "Flame Bow" };
@@ -369,6 +371,7 @@ class Tests
         Check("[ser] wavedur 3", r2.WaveDurations.Count == 3 && Near(r2.WaveDurations[2], 10.4, 0.05), r2.WaveDurations.Count);
         Check("[ser] samples 2", r2.Samples.Count == 2 && r2.Samples[1].Wave == 2, r2.Samples.Count);
         Check("[ser] taken hits", r2.TakenHits == 59, r2.TakenHits);
+        Check("[ser] taken samples 2", r2.TakenSamples.Count == 2 && r2.TakenSamples[1].Wave == 2 && Near(r2.TakenSamples[1].Dps, 202.5, 0.1), r2.TakenSamples.Count);
         Check("[ser] snapshot captured", snap2 != null && snap2.Captured, snap2 != null);
         Check("[ser] character id", snap2.Character == "priest", snap2.Character);
         Check("[ser] snap stat", snap2.Stats.Count == 1 && Near(snap2.Stats[0].Value, 1240), snap2.Stats.Count);

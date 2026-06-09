@@ -95,6 +95,8 @@ namespace TbhDpsMeter
         public readonly List<double> TakenAttrAmounts = new List<double>();
         public readonly List<int> TakenTypeFlags = new List<int>();
         public readonly List<double> TakenTypeAmounts = new List<double>();
+        /// <summary>Damage-taken (DTPS) curve over the run, mirroring <see cref="Samples"/>. Empty for old records.</summary>
+        public readonly List<Sample> TakenSamples = new List<Sample>();
 
         // --- stage-compare additions (v2) ---
         /// <summary>Stable stage identity (e.g. "3-6") for grouping runs of the same stage.</summary>

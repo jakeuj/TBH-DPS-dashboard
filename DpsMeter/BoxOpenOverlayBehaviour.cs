@@ -23,18 +23,18 @@ namespace TbhDpsMeter
         private int _page;
         private float _scale = 1f;
 
-        // per-grade row colors (index == grade int)
+        // per-grade row colors (index == grade int) — matched to the in-game grade chips
         private static readonly Color[] GradeColors = {
-            new Color(0.78f,0.82f,0.88f), // common
-            new Color(0.55f,0.85f,0.55f), // uncommon
-            new Color(0.40f,0.65f,1.00f), // rare
-            new Color(0.75f,0.50f,0.95f), // legendary
-            new Color(1.00f,0.62f,0.28f), // immortal
-            new Color(0.95f,0.40f,0.55f), // arcana
-            new Color(0.30f,0.85f,0.85f), // beyond
-            new Color(0.95f,0.85f,0.45f), // celestial
-            new Color(1.00f,0.95f,0.75f), // divine
-            new Color(1.00f,1.00f,1.00f), // cosmic
+            new Color(0.62f,0.64f,0.68f), // 0 普通  grey
+            new Color(0.40f,0.82f,0.45f), // 1 罕見  green
+            new Color(0.32f,0.74f,0.96f), // 2 稀有  blue
+            new Color(1.00f,0.60f,0.20f), // 3 傳奇  orange
+            new Color(0.95f,0.36f,0.36f), // 4 不朽  red
+            new Color(0.70f,0.45f,0.96f), // 5 至寶  purple
+            new Color(0.96f,0.40f,0.86f), // 6 超凡  magenta
+            new Color(0.36f,0.88f,0.90f), // 7 天界  cyan
+            new Color(0.96f,0.95f,0.80f), // 8 神聖  cream
+            new Color(1.00f,1.00f,1.00f), // 9 宇宙  white
         };
 
         private static string Hex(Color c) => $"#{(int)(c.r*255):X2}{(int)(c.g*255):X2}{(int)(c.b*255):X2}";

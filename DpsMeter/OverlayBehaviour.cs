@@ -46,6 +46,7 @@ namespace TbhDpsMeter
         private bool _stylesReady;
 
         private readonly List<Sample> _history = new List<Sample>(GraphCapacity + 4);
+        private readonly List<Sample> _takenHistory = new List<Sample>(GraphCapacity + 4);   // defense-side curve, saved with the run for review
         private float _nextSampleTime;
         private int _currentWave;
 
@@ -142,6 +143,15 @@ namespace TbhDpsMeter
                         _history.Add(new Sample { Dps = live, Wave = _currentWave });
                         while (_history.Count > GraphCapacity) _history.RemoveAt(0);
                     }
+
+                    // defense-side curve, sampled in lockstep so the saved run can replay it (its own freeze)
+                    float tLast = Plugin.TakenTracker.LastDamageTime;
+                    if ((now - tLast) <= HoldSeconds)
+                    {
+                        float tlive = Plugin.TakenTracker.GetSnapshot(Mathf.Min(now, tLast + HoldSeconds)).LiveDtps;
+                        _takenHistory.Add(new Sample { Dps = tlive, Wave = _currentWave });
+                        while (_takenHistory.Count > GraphCapacity) _takenHistory.RemoveAt(0);
+                    }
                 }
             }
             catch { }
@@ -196,6 +206,7 @@ namespace TbhDpsMeter
         {
             Plugin.Tracker.StartEncounter(Time.time);
             _history.Clear();
+            _takenHistory.Clear();
             _currentWave = 0;
             _reviewIndex = -1;
             _waveDurations.Clear();
@@ -239,6 +250,7 @@ namespace TbhDpsMeter
                 Plugin.Tracker.StartEncounter(Time.time);
                 Plugin.TakenTracker.StartEncounter(Time.time);
                 _history.Clear();
+                _takenHistory.Clear();
                 _currentWave = 0;
                 Plugin.CurrentWave = 0;
                 _waveDurations.Clear();
@@ -257,6 +269,7 @@ namespace TbhDpsMeter
                     Plugin.Tracker.StartEncounter(Time.time);
                     Plugin.TakenTracker.StartEncounter(Time.time);
                     _history.Clear();
+                    _takenHistory.Clear();
                     _activeSec = _idleSec = 0f;
                     _prevDmgTime = -1f;
                 }
@@ -308,6 +321,7 @@ namespace TbhDpsMeter
                 r.TakenHits = ts.Hits;
                 foreach (var p in ts.ByAttribute) { r.TakenAttrValues.Add(p.Key); r.TakenAttrAmounts.Add(p.Amount); }
                 foreach (var p in ts.ByType) { r.TakenTypeFlags.Add(p.Key); r.TakenTypeAmounts.Add(p.Amount); }
+                foreach (var smp in _takenHistory) r.TakenSamples.Add(smp);
 
                 RunStore.Save(r);
                 _runsLoaded = false;   // refresh list next time review opens
