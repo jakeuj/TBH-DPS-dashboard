@@ -45,7 +45,7 @@ namespace TbhDpsMeter
         {
             _rect.width = Mathf.Max(420, Plugin.BoxOpenPanelWidth.Value);
             _visible = Plugin.BoxOpenStartVisible.Value;
-            PanelRegistry.Register("boxopen", 5, () => Loc.G("boxopen_title"), Plugin.BoxOpenToggleKey, () => _visible, v => _visible = v);
+            PanelRegistry.Register("boxopen", 5, "◆", () => Loc.G("boxopen_title"), Plugin.BoxOpenToggleKey, () => _visible, v => _visible = v);
         }
         void Start() => PlaceDefault();
 
