@@ -27,6 +27,13 @@ namespace TbhDpsMeter
         /// in-memory exp accessor so per-run exp deltas survive obfuscation renames.</summary>
         public static readonly Dictionary<int, double> LastHeroExp = new Dictionary<int, double>();
 
+        /// <summary>Active-skill levels per heroKey, sorted by talent key — read from the save's
+        /// attributeSaveDatas. The talent tree's column-3/4 nodes (key%10 ∈ {3,4}) ARE the active skills;
+        /// their Level is the real in-game skill level (the obfuscated in-memory level field is NOT — it
+        /// returns an effective/garbage value, e.g. 13 for a level-5 skill). Paired in CharacterReader
+        /// with the equipped non-basic skills (also sorted by key). Stable across game updates.</summary>
+        public static readonly Dictionary<int, System.Collections.Generic.List<int>> LastHeroSkillLevels = new Dictionary<int, System.Collections.Generic.List<int>>();
+
         /// <summary>Parse the live save and return equipped gear per heroKey. Empty on any failure.</summary>
         public static Dictionary<int, List<GearItem>> ReadParty()
         {
@@ -51,6 +58,34 @@ namespace TbhDpsMeter
                         long uid = Json.Long(Json.Get(it, "UniqueId"));
                         if (uid != 0) byUid[uid] = it;
                     }
+
+                // active-skill levels: the talent tree (attributeSaveDatas) holds the real per-skill level.
+                // Group leveled column-3/4 nodes (key%10 ∈ {3,4}) by heroKey (talent key range
+                // [heroKey*1000, heroKey*1000+1000)), sorted by talent key.
+                LastHeroSkillLevels.Clear();
+                var attrs = FindArray(inner, "attributeSaveDatas");
+                if (attrs != null)
+                {
+                    var byHero = new Dictionary<int, List<KeyValuePair<int, int>>>();
+                    foreach (var a in attrs)
+                    {
+                        int ak = (int)Json.Num(Json.Get(a, "Key"));
+                        int lv = (int)Json.Num(Json.Get(a, "Level"));
+                        if (ak <= 0 || lv <= 0) continue;
+                        int col = ak % 10;
+                        if (col != 3 && col != 4) continue;          // active-skill columns only
+                        int hk = ak / 1000;                          // 201033 -> 201
+                        if (!byHero.TryGetValue(hk, out var l)) byHero[hk] = l = new List<KeyValuePair<int, int>>();
+                        l.Add(new KeyValuePair<int, int>(ak, lv));
+                    }
+                    foreach (var kv in byHero)
+                    {
+                        kv.Value.Sort((x, y) => x.Key.CompareTo(y.Key));
+                        var levels = new List<int>();
+                        foreach (var p in kv.Value) levels.Add(p.Value);
+                        LastHeroSkillLevels[kv.Key] = levels;
+                    }
+                }
 
                 var heroes = FindArray(inner, "heroSaveDatas");
                 if (heroes != null)

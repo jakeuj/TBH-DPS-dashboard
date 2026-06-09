@@ -386,17 +386,7 @@ namespace TbhDpsMeter
                 }
                 catch (Exception le) { Log("loc diag ex: " + le.Message); }
 
-                // skill level probing on the real equipped list (bchd)
-                foreach (var sk in Refl.Enumerate(Refl.Get(hero, "bchd")))
-                {
-                    var sc = Refl.Get(sk, "skillCache");
-                    int key = Refl.ToI(Refl.Get(Refl.Get(sc, "behi"), "SkillKey"));
-                    var sb = new System.Text.StringBuilder($"bchd skill key={key} levels:");
-                    foreach (var g in SkillLevelMembers) sb.Append($" {g}={ParseLevel(Refl.Get(sc, g) ?? Refl.Call(sc, g))}");
-                    Log(sb.ToString());
-                    // also probe int getters on ActiveSkill itself
-                    foreach (var g in new[] { "mes", "meu", "mex", "mfb", "mfd" }) Log($"   AS.{g}={ParseLevel(Refl.Call(sk, g))}");
-                }
+                DiagSkills(hero);
                 // gear: step through the uid collection enumerator explicitly
                 var cacheG = Refl.Get(hero, "cache");
                 var uids = Refl.Call(cacheG, "jgr") ?? Refl.Get(cacheG, "brqt");
@@ -891,6 +881,83 @@ namespace TbhDpsMeter
             if (i != 0) return i;
             try { if (v != null && int.TryParse(v.ToString(), out var p)) return p; } catch { }
             return 0;
+        }
+
+        /// <summary>Diagnostic: dump every equipped skill's cache + ActiveSkill int members so a known
+        /// in-game level can be matched to its obfuscated member. Runs per hero (called for the whole
+        /// party from CaptureParty) — the live, in-combat hero's caches are the ones that matter.</summary>
+        public static bool DiagSkills(Hero hero)
+        {
+            if (hero == null) return false;
+            bool sawNamed = false;
+            try
+            {
+                foreach (var holder in new[] { "bche", "bchd" })
+                {
+                    object src = Refl.Get(hero, holder);
+                    var seq = Refl.Get(src, "Values") ?? src;
+                    foreach (var sk in Refl.EnumerateE(seq))
+                    {
+                        var sc = Refl.Get(sk, "skillCache");
+                        if (sc == null) { Log($"[skilldiag] {holder}: skillCache=null"); continue; }
+                        string nm = Refl.Str(Refl.Get(sc, "brrl"));
+                        if (!string.IsNullOrEmpty(nm)) sawNamed = true;
+                        Log($"[skilldiag] {holder} name='{nm}' brro={Refl.ToI(Refl.Get(sc, "brro"))}");
+                        DumpIntMembers(sc, "   cache.");
+                        DumpIntMembers(sk, "   skill.");
+                    }
+                }
+                // ALSO dump the Dictionary<int,*Skill> entries — this is the exact collection
+                // ReadSkillLevels reads, and the source of the level the overlay actually shows.
+                foreach (var p in typeof(Hero).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    if (!p.CanRead || p.PropertyType.Name != "Dictionary`2") continue;
+                    var ga = p.PropertyType.GetGenericArguments();
+                    if (ga.Length != 2 || !ga[1].Name.EndsWith("Skill", StringComparison.Ordinal)) continue;
+                    object dict; try { dict = p.GetValue(hero); } catch { continue; }
+                    foreach (var kvp in Refl.EnumerateE(dict))
+                    {
+                        int key = Refl.ToI(Refl.Get(kvp, "Key"));
+                        object val = Refl.Get(kvp, "Value");
+                        Log($"[skilldiag] dict[{p.Name}] key={key}");
+                        DumpIntMembers(val, "   dval.");
+                    }
+                }
+            }
+            catch (Exception e) { Log("[skilldiag] ex: " + e.Message); }
+            return sawNamed;
+        }
+
+        /// <summary>Diagnostic: log every integer-valued property/field on an obfuscated wrapper as
+        /// name=value (magnitude &lt; 100000, non-bool), so a known in-game number can be matched to its
+        /// obfuscated member name. One-shot only — invoked from Diagnose.</summary>
+        private static void DumpIntMembers(object o, string prefix)
+        {
+            if (o == null) return;
+            try
+            {
+                var t = o.GetType();
+                var sb = new System.Text.StringBuilder(prefix);
+                foreach (var p in t.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    if (!p.CanRead || p.GetIndexParameters().Length != 0) continue;
+                    if (p.PropertyType == typeof(bool)) continue;
+                    object v; try { v = p.GetValue(o); } catch { continue; }
+                    if (v == null) continue;
+                    int iv; try { iv = Convert.ToInt32(v); } catch { continue; }
+                    if (Math.Abs(iv) < 100000000) sb.Append($" {p.Name}={iv}");
+                }
+                foreach (var f in t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                {
+                    if (f.FieldType == typeof(bool)) continue;
+                    object v; try { v = f.GetValue(o); } catch { continue; }
+                    if (v == null) continue;
+                    int iv; try { iv = Convert.ToInt32(v); } catch { continue; }
+                    if (Math.Abs(iv) < 100000000) sb.Append($" {f.Name}={iv}");
+                }
+                Log(sb.ToString());
+            }
+            catch (Exception e) { Log(prefix + "dump ex: " + e.Message); }
         }
 
         /// <summary>Skill level: ActiveSkill.meu (total level, ≥1 for equipped) with fallbacks to the

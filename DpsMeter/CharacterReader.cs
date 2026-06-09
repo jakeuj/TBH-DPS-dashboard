@@ -38,6 +38,7 @@ namespace TbhDpsMeter
         private static readonly System.Collections.Generic.Dictionary<int, int> _runBox = new System.Collections.Generic.Dictionary<int, int>();
         private static bool _boxTracking;
         private static bool _rewardDiagDone;
+        private static bool _skillDiagDone;
 
         /// <summary>Snapshot gold / per-hero exp / box counts at the start of a run.</summary>
         public static void CaptureRewardBaseline()
@@ -123,6 +124,14 @@ namespace TbhDpsMeter
                 var heroes = HeroProbe.FindParty();
                 var saveGear = SaveGearReader.ReadParty();   // gear from the decrypted save, keyed by heroKey
                 bool diag = Plugin.DebugSnapshot != null && Plugin.DebugSnapshot.Value;
+                // one-shot: dump skill-cache members for EVERY party hero (not just slot 0) so the
+                // live in-combat hero's caches are captured for the skill-level field hunt.
+                if (diag && !_skillDiagDone)
+                {
+                    bool sawNamed = false;
+                    foreach (var h in heroes) if (h != null) sawNamed |= HeroProbe.DiagSkills(h);
+                    if (sawNamed) _skillDiagDone = true;   // keep retrying until live (named) skills appear
+                }
                 foreach (var hero in heroes)
                 {
                     if (hero == null) continue;
@@ -156,13 +165,22 @@ namespace TbhDpsMeter
                     if (snap.Skills.Count == 0 && int.TryParse(snap.Character, out int hks)
                         && SaveGearReader.LastHeroSkills.TryGetValue(hks, out var sks))
                     {
-                        var lvls = HeroProbe.ReadSkillLevels(hero);   // skillKey -> level (in-memory)
+                        // equipped non-basic skills (basic attacks end in 001, no display name), sorted by key
+                        var named = new System.Collections.Generic.List<int>();
                         foreach (var k in sks)
+                            if (k % 1000 != 1 && !string.IsNullOrEmpty(HeroProbe.ResolveSkillName(k))) named.Add(k);
+                        named.Sort();
+                        // real levels come from the save's talent tree (sorted by talent key), paired
+                        // positionally with the sorted skills. The in-memory level is only a last resort —
+                        // it returns an effective/garbage value (e.g. 13 for a level-5 skill).
+                        SaveGearReader.LastHeroSkillLevels.TryGetValue(hks, out var saveLvls);
+                        var inMem = HeroProbe.ReadSkillLevels(hero);
+                        for (int i = 0; i < named.Count; i++)
                         {
-                            string snm = HeroProbe.ResolveSkillName(k);
-                            if (string.IsNullOrEmpty(snm)) continue;   // skip nameless basic attacks (e.g. 20001)
-                            int lv = lvls.TryGetValue(k, out var l) ? l : 0;
-                            snap.Skills.Add(new SkillEntry(snm, lv, k));
+                            int k = named[i];
+                            int lv = (saveLvls != null && i < saveLvls.Count) ? saveLvls[i]
+                                   : (inMem.TryGetValue(k, out var l) ? l : 0);
+                            snap.Skills.Add(new SkillEntry(HeroProbe.ResolveSkillName(k), lv, k));
                         }
                     }
                     snap.Captured = snap.HasAny;
