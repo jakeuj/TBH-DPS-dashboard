@@ -5,15 +5,6 @@ using TaskbarHero;
 
 namespace TbhDpsMeter
 {
-    /// <summary>One recorded box pickup.</summary>
-    public sealed class BoxEvent
-    {
-        public string Stage;     // e.g. "2-4 HELL"
-        public DateTime Time;    // wall-clock moment of pickup
-        public int Arg;          // raw value from OnGetBox (decoded into Type)
-        public string Type;      // NORMAL / BOSS / ACTBOSS / raw
-    }
-
     /// <summary>Detects box pickups by subscribing to the game's own StageManager.OnGetBox event
     /// (Action&lt;int&gt; — a READABLE, non-obfuscated name, so it survives game updates). Records the
     /// stage + wall-clock time + box type, beeps, and keeps a session log for the F5 panel.</summary>
