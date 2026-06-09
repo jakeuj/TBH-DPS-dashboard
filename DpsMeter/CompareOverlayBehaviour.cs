@@ -51,7 +51,7 @@ namespace TbhDpsMeter
             _opacity = Mathf.Clamp01(Plugin.Opacity.Value + 0.15f);
             _rect.width = Mathf.Max(520, Plugin.ComparePanelWidth.Value);   // two-column layout needs width
             _visible = Plugin.CompareStartVisible.Value;
-            PanelRegistry.Register("compare", 2, () => Loc.G("compare_title"), Plugin.CompareToggleKey, () => _visible, v => _visible = v);
+            PanelRegistry.Register("compare", 2, "⇄", () => Loc.G("compare_title"), Plugin.CompareToggleKey, () => _visible, v => _visible = v);
         }
 
         void Start() => PlaceDefault();

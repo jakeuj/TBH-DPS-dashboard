@@ -73,7 +73,7 @@ namespace TbhDpsMeter
         {
             _rect.width = Mathf.Max(520, Plugin.FarmPanelWidth.Value);
             _visible = Plugin.FarmStartVisible.Value;
-            PanelRegistry.Register("farm", 3, () => Loc.G("farm_title"), Plugin.FarmToggleKey, () => _visible, v => _visible = v);
+            PanelRegistry.Register("farm", 3, "⟳", () => Loc.G("farm_title"), Plugin.FarmToggleKey, () => _visible, v => _visible = v);
         }
 
         void Start() => PlaceDefault();

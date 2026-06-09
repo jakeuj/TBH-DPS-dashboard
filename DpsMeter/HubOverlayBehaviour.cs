@@ -20,7 +20,7 @@ namespace TbhDpsMeter
         private Vector2 _dragOffset; private bool _dragging;
 
         private Texture2D _white, _bgTex;
-        private GUIStyle _title, _label, _dim, _tiny, _btn, _box, _tagR;
+        private GUIStyle _title, _label, _dim, _tiny, _btn, _box, _tagR, _icon, _tip;
         private bool _stylesReady;
 
         private Rect _closeRect, _handleRect;
@@ -96,6 +96,8 @@ namespace TbhDpsMeter
             _tiny = new GUIStyle { fontSize = Mathf.Max(9, fs - 4), richText = true }; _tiny.normal.textColor = new Color(0.7f, 0.75f, 0.85f);
             _tagR = new GUIStyle { fontSize = Mathf.Max(9, fs - 4), richText = true, alignment = TextAnchor.MiddleRight }; _tagR.normal.textColor = new Color(0.7f, 0.75f, 0.85f);
             _btn = new GUIStyle(GUI.skin.button) { fontSize = fs - 2, fontStyle = FontStyle.Bold, richText = true };
+            _icon = new GUIStyle { fontSize = fs + 3, richText = true, alignment = TextAnchor.MiddleCenter }; _icon.normal.textColor = Color.white;
+            _tip = new GUIStyle { fontSize = fs - 2, richText = true, alignment = TextAnchor.MiddleCenter }; _tip.normal.textColor = new Color(0.95f, 0.95f, 0.95f);
             _box = new GUIStyle(); _box.normal.background = _bgTex;
             _stylesReady = true;
         }
@@ -116,8 +118,9 @@ namespace TbhDpsMeter
 
                 var panels = PanelRegistry.Panels;
 
-                // height: title + summary + separator gap + one row per panel + padding
-                float h = Pad + lh /*title*/ + lh /*summary*/ + lh * 0.4f /*separator*/ + lh * Mathf.Max(panels.Count, 1) + Pad;
+                // height: title + summary + separator gap + one icon row + tooltip line + padding
+                float iconSz = lh + 10f;
+                float h = Pad + lh /*title*/ + lh /*summary*/ + lh * 0.4f /*separator*/ + iconSz /*icon row*/ + lh /*tooltip*/ + Pad;
                 _rect.height = h;
                 _scale = UiScale.Fit(_rect.width, _rect.height);
                 if (!_dragging) { _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width * _scale)); _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height * _scale)); }
@@ -154,28 +157,40 @@ namespace TbhDpsMeter
                 DrawRect(ix, cy + lh * 0.2f, iw, 1, new Color(1, 1, 1, 0.12f));
                 cy += lh * 0.4f;
 
-                // one full-width toggle button per registered panel
+                // horizontal icon row: one toggle icon per registered panel (lit when on, dim when off)
                 _panelRects.Clear();
+                Vector2 mLocal = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
+                int hover = -1;
+                float gap = 8f;
+                float rowW = panels.Count * iconSz + Mathf.Max(0, panels.Count - 1) * gap;
+                float bx = ix + Mathf.Max(0f, (iw - rowW) * 0.5f);   // center the icons
                 for (int i = 0; i < panels.Count; i++)
                 {
                     var e = panels[i];
-                    bool on = false; string name; string tag;
+                    bool on = false; string ic;
                     try { on = e.Get(); } catch { }
+                    try { ic = string.IsNullOrEmpty(e.Icon) ? "▣" : e.Icon; } catch { ic = "▣"; }
+                    var r = new Rect(bx + i * (iconSz + gap), cy, iconSz, iconSz);
+                    _panelRects.Add(r);
+                    if (r.Contains(mLocal)) hover = i;
+                    GUI.Button(r, GUIContent.none, _btn);
+                    if (on) DrawRect(r.x + 2, r.y + r.height - 3, r.width - 4, 2, new Color(0.5f, 1f, 0.63f, 0.95f)); // lit underline
+                    string col = on ? "#eaf3ee" : "#6b7480";
+                    GUI.Label(r, $"<color={col}>{ic}</color>", _icon);
+                }
+                cy += iconSz + 4f;
+
+                // hover tooltip: panel name + hotkey, centered under the hovered icon
+                if (hover >= 0 && hover < panels.Count)
+                {
+                    var e = panels[hover];
+                    string name, tag;
                     try { name = e.Name(); } catch { name = e.Id ?? "?"; }
                     try { tag = e.Hotkey.ToString(); } catch { tag = ""; }
-
-                    var r = new Rect(ix, cy, iw, lh - 2);
-                    _panelRects.Add(r);
-                    GUI.Button(r, GUIContent.none, _btn);
-                    // status dot + name (bright when on, dim when off)
-                    string dot = on ? "<color=#7fffa0>●</color>" : "<color=#5a6470>●</color>";
-                    string nameCol = on ? "#eaf3ee" : "#8a93a0";
-                    GUI.Label(new Rect(ix + 6, cy, iw - 6 - 56, lh - 2), $"{dot} <color={nameCol}>{name}</color>", _label);
-                    GUI.Label(new Rect(ix + iw - 60, cy, 56, lh - 2), $"<size=11><color=#9fb4cc>{tag}</color></size>", _tagR);
-                    cy += lh;
+                    GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#eaf3ee>{name}</color>  <color=#9fb4cc>{tag}</color>", _tip);
                 }
-                if (panels.Count == 0)
-                    GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#8a93a0>{Loc.G("no_runs")}</color>", _tiny);
+                else if (panels.Count == 0)
+                    GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#8a93a0>{Loc.G("no_runs")}</color>", _tip);
             }
             catch { }
             finally { GUI.matrix = prevM; }

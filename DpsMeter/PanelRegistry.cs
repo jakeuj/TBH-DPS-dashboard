@@ -11,6 +11,7 @@ namespace TbhDpsMeter
     {
         public string Id;
         public int Order;
+        public string Icon;         // single BMP glyph shown in the hub's icon row (emoji won't render in IMGUI)
         public Func<string> Name;   // localized; resolved each frame so language switches live
         public KeyCode Hotkey;      // display only (the overlay still owns the actual key)
         public Func<bool> Get;
@@ -23,19 +24,19 @@ namespace TbhDpsMeter
     {
         public static readonly List<PanelEntry> Panels = new List<PanelEntry>();
 
-        public static void Register(string id, int order, Func<string> name, KeyCode hotkey, Func<bool> get, Action<bool> set)
+        public static void Register(string id, int order, string icon, Func<string> name, KeyCode hotkey, Func<bool> get, Action<bool> set)
         {
             // Awake can run more than once (scene reloads / re-injection); replace in place by id.
             for (int i = 0; i < Panels.Count; i++)
             {
                 if (Panels[i].Id == id)
                 {
-                    Panels[i].Order = order; Panels[i].Name = name; Panels[i].Hotkey = hotkey;
+                    Panels[i].Order = order; Panels[i].Icon = icon; Panels[i].Name = name; Panels[i].Hotkey = hotkey;
                     Panels[i].Get = get; Panels[i].Set = set;
                     return;
                 }
             }
-            Panels.Add(new PanelEntry { Id = id, Order = order, Name = name, Hotkey = hotkey, Get = get, Set = set });
+            Panels.Add(new PanelEntry { Id = id, Order = order, Icon = icon, Name = name, Hotkey = hotkey, Get = get, Set = set });
             Panels.Sort((a, b) => a.Order.CompareTo(b.Order));
         }
     }
