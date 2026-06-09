@@ -30,7 +30,7 @@ const ld = jsonLd ? softwareAppJsonLd({ name: 'TBH DPS Meter', version: LATEST_V
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet" />
-  {ld && <script type="application/ld+json" set:html={JSON.stringify(ld)} />}
+  {ld && <script is:inline type="application/ld+json" set:html={JSON.stringify(ld)} />}
 </head>
 <body>
   <Nav locale={locale} path={path} />

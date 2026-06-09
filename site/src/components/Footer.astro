@@ -4,7 +4,8 @@ import { localizedPath } from '../lib/seo';
 import { getDict } from '../i18n';
 interface Props { locale: Locale; }
 const { locale } = Astro.props;
-const t = getDict(locale).footer;
+const dict = getDict(locale);
+const t = dict.footer;
 const gh = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}`;
 ---
 <footer><div class="wrap">
@@ -13,7 +14,7 @@ const gh = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}`;
     <span class="spacer"></span>
     <a href={gh}>GitHub</a>
     <a href={`${gh}/blob/main/LICENSE`}>{t.license}</a>
-    <a href={localizedPath(locale, '/changelog')}>Changelog</a>
+    <a href={localizedPath(locale, '/changelog')}>{dict.changelog.title}</a>
   </div>
   <p style="margin-top:14px;font-size:12px;color:#9aa4b2">{t.disclaimerLong}</p>
 </div></footer>
