@@ -18,7 +18,7 @@ namespace TbhDpsMeter
         /// <param name="outPointIndex">Cleared+filled with each point's index; null to skip.</param>
         public static void Draw(Rect area, float panelX, IReadOnlyList<float> values,
             int baselineIndex, int selectedIndex, Texture2D white, GUIStyle tiny,
-            List<Rect> outPointRects, List<int> outPointIndex)
+            List<Rect> outPointRects, List<int> outPointIndex, string unit = "s")
         {
             float px = area.x + 30, pw = area.width - 36, py = area.y, ph = area.height;
             DrawRect(white, px, py, pw, ph, new Color(0f, 0f, 0f, 1f));
@@ -34,8 +34,8 @@ namespace TbhDpsMeter
             if (minDur == float.MaxValue) minDur = 0f;
             float span = Mathf.Max(1f, maxDur - minDur);
 
-            GUI.Label(new Rect(panelX + 2, py - 6, 30, 14), $"<size=9>{maxDur:0}s</size>", tiny);
-            GUI.Label(new Rect(panelX + 2, py + ph - 12, 30, 14), $"<size=9>{minDur:0}s</size>", tiny);
+            GUI.Label(new Rect(panelX + 2, py - 6, 36, 14), $"<size=9>{maxDur:0}{unit}</size>", tiny);
+            GUI.Label(new Rect(panelX + 2, py + ph - 12, 36, 14), $"<size=9>{minDur:0}{unit}</size>", tiny);
 
             float dx = n > 1 ? pw / (n - 1) : 0f;
             Vector2 prev = Vector2.zero;

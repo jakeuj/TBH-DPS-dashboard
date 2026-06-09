@@ -120,7 +120,11 @@ namespace TbhDpsMeter
                 var panels = PanelRegistry.Panels;
 
                 // height: title + summary + separator gap + one icon row + tooltip line + padding
-                float iconSz = lh + 10f;
+                // icons shrink to fit the panel width so the row never overflows as panels are added
+                float gap = 6f;
+                int nIcons = Mathf.Max(1, panels.Count);
+                float iconSz = Mathf.Min(lh + 10f, Mathf.Floor((iw - (nIcons - 1) * gap) / nIcons));
+                if (iconSz < 12f) iconSz = 12f;
                 float h = Pad + lh /*title*/ + lh /*summary*/ + lh * 0.4f /*separator*/ + iconSz /*icon row*/ + lh /*tooltip*/ + Pad;
                 _rect.height = h;
                 _scale = UiScale.Fit(_rect.width, _rect.height);
@@ -162,7 +166,6 @@ namespace TbhDpsMeter
                 _panelRects.Clear();
                 Vector2 mLocal = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
                 int hover = -1;
-                float gap = 8f;
                 float rowW = panels.Count * iconSz + Mathf.Max(0, panels.Count - 1) * gap;
                 float bx = ix + Mathf.Max(0f, (iw - rowW) * 0.5f);   // center the icons
                 for (int i = 0; i < panels.Count; i++)

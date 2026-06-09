@@ -91,7 +91,6 @@ namespace TbhDpsMeter
         public static ConfigEntry<bool> LootMapStartVisible;
         private static ConfigEntry<string> _lootMapToggleKeyName;
         public static KeyCode LootMapToggleKey = KeyCode.F3;
-        public static readonly LootTimeline Loot = new LootTimeline();
 
         public static KeyCode ToggleKey = KeyCode.F9;
         public static KeyCode TakenToggleKey = KeyCode.F10;
@@ -199,8 +198,6 @@ namespace TbhDpsMeter
             try { foreach (var e in BoxStore.LoadAll(500)) BoxTracker.Events.Add(e); } catch { }
             try { BoxOpenStore.Load(BoxOpenTracker.Stats); } catch { }
             BoxOpenTracker.Install(harmony);
-            LootTimeline.Dir = System.IO.Path.Combine(BepInEx.Paths.ConfigPath, "dpsmeter_boxopen");
-            try { Loot.Load(); } catch { }
 
             try
             {
