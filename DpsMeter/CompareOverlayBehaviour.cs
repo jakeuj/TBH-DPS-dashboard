@@ -450,42 +450,12 @@ namespace TbhDpsMeter
         /// Highlights the baseline point (gold) and the currently-selected run (white ring).</summary>
         private void DrawChartSection(List<RunRecord> group, RunRecord baseline, float ix, float y, float iw, float plotH)
         {
-            float x = _rect.x;
-            float px = ix + 30, pw = iw - 36, py = y, ph = plotH;
-            DrawRect(px, py, pw, ph, new Color(0f, 0f, 0f, 1f));
-            DrawRect(px, py, pw, 1, new Color(1, 1, 1, 0.12f));
-            DrawRect(px, py + ph - 1, pw, 1, new Color(1, 1, 1, 0.12f));
-
-            _pointRects.Clear(); _pointRun.Clear();
-            int n = group.Count;
-            float maxDur = 1f, minDur = float.MaxValue;
-            foreach (var r in group) { if (r.Duration > maxDur) maxDur = r.Duration; if (r.Duration > 0 && r.Duration < minDur) minDur = r.Duration; }
-            if (minDur == float.MaxValue) minDur = 0f;
-            float span = Mathf.Max(1f, maxDur - minDur);
-
-            GUI.Label(new Rect(x + 2, py - 6, 30, 14), $"<size=9>{maxDur:0}s</size>", _tiny);
-            GUI.Label(new Rect(x + 2, py + ph - 12, 30, 14), $"<size=9>{minDur:0}s</size>", _tiny);
-
-            float dx = n > 1 ? pw / (n - 1) : 0f;
-            Vector2 prev = Vector2.zero;
-            for (int i = 0; i < n; i++)
-            {
-                var r = group[i];
-                float t = (r.Duration - minDur) / span;
-                float ptx = n > 1 ? px + dx * i : px + pw * 0.5f;
-                float pty = py + ph - 8 - t * (ph - 16);
-                if (i > 0) DrawLine(prev, new Vector2(ptx, pty), new Color(0.45f, 0.7f, 1f, 0.9f));
-                prev = new Vector2(ptx, pty);
-                bool isBase = ReferenceEquals(r, baseline);
-                bool isSel = i == _runIndex;
-                if (isSel) DrawRect(ptx - 6, pty - 6, 12, 12, new Color(1, 1, 1, 0.9f));   // selected ring
-                var col = isBase ? new Color(1f, 0.8f, 0.3f) : new Color(0.4f, 0.66f, 0.98f);
-                float ds = isBase ? 9f : 7f;
-                DrawRect(ptx - ds / 2, pty - ds / 2, ds, ds, col);
-                _pointRects.Add(new Rect(ptx - 9, pty - 9, 18, 18)); _pointRun.Add(i);
-            }
-            GUI.Label(new Rect(px - 4, py + ph + 2, 40, 14), "<size=9>#1</size>", _tiny);
-            if (n > 1) GUI.Label(new Rect(px + pw - 24, py + ph + 2, 30, 14), $"<size=9>#{n}</size>", _tiny);
+            // Build the Y series (clear seconds) and find the baseline index, then defer to the
+            // shared TrendChart so the F11 chart and the loot-heatmap panel render identically.
+            var vals = new List<float>(group.Count);
+            int baseIdx = -1;
+            for (int i = 0; i < group.Count; i++) { vals.Add(group[i].Duration); if (ReferenceEquals(group[i], baseline)) baseIdx = i; }
+            TrendChart.Draw(new Rect(ix, y, iw, plotH), _rect.x, vals, baseIdx, _runIndex, _white, _tiny, _pointRects, _pointRun);
         }
 
         private void DrawLine(Vector2 a, Vector2 b, Color c)

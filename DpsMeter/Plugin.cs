@@ -14,7 +14,7 @@ namespace TbhDpsMeter
     {
         public const string Guid = "tbh.dpsmeter";
         public const string Name = "TBH DPS Meter";
-        public const string Version = "0.7.0";
+        public const string Version = "0.8.0";
 
         public static DpsTracker Tracker;
         public static DamageTakenTracker TakenTracker;
@@ -83,6 +83,15 @@ namespace TbhDpsMeter
         private static ConfigEntry<string> _boxOpenToggleKeyName;
         public static KeyCode BoxOpenToggleKey = KeyCode.F4;
         public static readonly DateTime SessionStart = DateTime.Now;
+
+        // loot-heatmap (F3) panel config
+        public static ConfigEntry<float> LootMapPosX;
+        public static ConfigEntry<float> LootMapPosY;
+        public static ConfigEntry<float> LootMapPanelWidth;
+        public static ConfigEntry<bool> LootMapStartVisible;
+        private static ConfigEntry<string> _lootMapToggleKeyName;
+        public static KeyCode LootMapToggleKey = KeyCode.F3;
+        public static readonly LootTimeline Loot = new LootTimeline();
 
         public static KeyCode ToggleKey = KeyCode.F9;
         public static KeyCode TakenToggleKey = KeyCode.F10;
@@ -153,6 +162,12 @@ namespace TbhDpsMeter
             BoxOpenStartVisible = Config.Bind("BoxOpenUI", "StartVisible", false, "Show the open-box stats overlay on launch.");
             _boxOpenToggleKeyName = Config.Bind("BoxOpenUI", "ToggleKey", "F4", "Key to show/hide the open-box stats overlay (UnityEngine.KeyCode name).");
 
+            LootMapPosX = Config.Bind("LootMapUI", "PosX", -1f, "Loot-heatmap overlay X. -1 = auto.");
+            LootMapPosY = Config.Bind("LootMapUI", "PosY", -1f, "Loot-heatmap overlay Y. -1 = auto.");
+            LootMapPanelWidth = Config.Bind("LootMapUI", "PanelWidth", 560f, "Loot-heatmap overlay width in pixels.");
+            LootMapStartVisible = Config.Bind("LootMapUI", "StartVisible", false, "Show the loot-heatmap overlay on launch.");
+            _lootMapToggleKeyName = Config.Bind("LootMapUI", "ToggleKey", "F3", "Key to show/hide the loot-heatmap overlay (UnityEngine.KeyCode name).");
+
             if (!Enum.TryParse(_toggleKeyName.Value, true, out ToggleKey))
                 ToggleKey = KeyCode.F9;
             if (!Enum.TryParse(_takenToggleKeyName.Value, true, out TakenToggleKey))
@@ -167,6 +182,8 @@ namespace TbhDpsMeter
                 HubToggleKey = KeyCode.F1;
             if (!Enum.TryParse(_boxOpenToggleKeyName.Value, true, out BoxOpenToggleKey))
                 BoxOpenToggleKey = KeyCode.F4;
+            if (!Enum.TryParse(_lootMapToggleKeyName.Value, true, out LootMapToggleKey))
+                LootMapToggleKey = KeyCode.F3;
 
             Tracker = new DpsTracker(WindowSeconds.Value);
             TakenTracker = new DamageTakenTracker(WindowSeconds.Value);
@@ -182,6 +199,8 @@ namespace TbhDpsMeter
             try { foreach (var e in BoxStore.LoadAll(500)) BoxTracker.Events.Add(e); } catch { }
             try { BoxOpenStore.Load(BoxOpenTracker.Stats); } catch { }
             BoxOpenTracker.Install(harmony);
+            LootTimeline.Dir = System.IO.Path.Combine(BepInEx.Paths.ConfigPath, "dpsmeter_boxopen");
+            try { Loot.Load(); } catch { }
 
             try
             {
@@ -192,6 +211,7 @@ namespace TbhDpsMeter
                 ClassInjector.RegisterTypeInIl2Cpp<BoxOverlayBehaviour>();
                 ClassInjector.RegisterTypeInIl2Cpp<HubOverlayBehaviour>();
                 ClassInjector.RegisterTypeInIl2Cpp<BoxOpenOverlayBehaviour>();
+                ClassInjector.RegisterTypeInIl2Cpp<LootMapOverlayBehaviour>();
                 var go = new GameObject("TbhDpsOverlay");
                 UnityEngine.Object.DontDestroyOnLoad(go);
                 go.hideFlags = HideFlags.HideAndDontSave;
@@ -202,7 +222,8 @@ namespace TbhDpsMeter
                 go.AddComponent<BoxOverlayBehaviour>();
                 go.AddComponent<HubOverlayBehaviour>();
                 go.AddComponent<BoxOpenOverlayBehaviour>();
-                Logger.LogInfo("Overlays created. hub " + HubToggleKey + ", DPS " + ToggleKey + ", taken " + TakenToggleKey + ", compare " + CompareToggleKey + ", farm " + FarmToggleKey + ", box " + BoxToggleKey + ", boxopen " + BoxOpenToggleKey + ".");
+                go.AddComponent<LootMapOverlayBehaviour>();
+                Logger.LogInfo("Overlays created. hub " + HubToggleKey + ", DPS " + ToggleKey + ", taken " + TakenToggleKey + ", compare " + CompareToggleKey + ", farm " + FarmToggleKey + ", box " + BoxToggleKey + ", boxopen " + BoxOpenToggleKey + ", lootmap " + LootMapToggleKey + ".");
             }
             catch (Exception ex)
             {

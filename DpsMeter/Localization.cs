@@ -113,6 +113,12 @@ namespace TbhDpsMeter
         {
             { "dps_title",      new[] { "TBH DPS", "TBH DPS", "TBH DPS", "TBH DPS", "TBH DPS" } },
             { "hub_title",      new[] { "中控台", "Control Center", "コントロール", "中控台", "Centro" } },
+            { "lootmap_title",  new[] { "掉寶熱力圖", "Loot Heatmap", "ドロップ分布", "掉宝热力图", "Mapa de botín" } },
+            { "metric_opens",   new[] { "開箱率", "Opens", "開封数", "开箱率", "Aperturas" } },
+            { "metric_loot",    new[] { "掉寶率", "Loot", "良品率", "掉宝率", "Botín" } },
+            { "lm_total",       new[] { "總計", "Total", "合計", "总计", "Total" } },
+            { "lm_today",       new[] { "今日", "Today", "今日", "今日", "Hoy" } },
+            { "lm_week",        new[] { "本週", "This week", "今週", "本周", "Semana" } },
             { "taken_title",    new[] { "受到傷害", "Damage Taken", "被ダメージ", "受到伤害", "Daño recibido" } },
             { "reset",          new[] { "重置", "Reset", "リセット", "重置", "Reiniciar" } },
             { "peak",           new[] { "峰值", "Peak", "ピーク", "峰值", "Pico" } },
