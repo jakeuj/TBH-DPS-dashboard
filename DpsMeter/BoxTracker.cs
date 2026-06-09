@@ -44,6 +44,7 @@ namespace TbhDpsMeter
                 var ev = new BoxEvent { Stage = stage, Time = DateTime.Now, Arg = arg, Type = DecodeType(arg) };
                 Events.Add(ev);
                 if (Events.Count > 500) Events.RemoveAt(0);
+                BoxStore.Append(ev);
                 Version++;
                 Plugin.Logger?.LogInfo($"[box] GOT BOX arg={arg} type={ev.Type} stage={stage} at {ev.Time:HH:mm:ss}");
                 BoxSound.Play();

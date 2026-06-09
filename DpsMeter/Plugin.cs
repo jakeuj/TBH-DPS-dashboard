@@ -75,6 +75,15 @@ namespace TbhDpsMeter
         public static ConfigEntry<bool> HubStartVisible;
         private static ConfigEntry<string> _hubToggleKeyName;
 
+        // box-open (F4) panel config
+        public static ConfigEntry<float> BoxOpenPosX;
+        public static ConfigEntry<float> BoxOpenPosY;
+        public static ConfigEntry<float> BoxOpenPanelWidth;
+        public static ConfigEntry<bool> BoxOpenStartVisible;
+        private static ConfigEntry<string> _boxOpenToggleKeyName;
+        public static KeyCode BoxOpenToggleKey = KeyCode.F4;
+        public static readonly DateTime SessionStart = DateTime.Now;
+
         public static KeyCode ToggleKey = KeyCode.F9;
         public static KeyCode TakenToggleKey = KeyCode.F10;
         public static KeyCode CompareToggleKey = KeyCode.F11;
@@ -138,6 +147,12 @@ namespace TbhDpsMeter
             HubStartVisible = Config.Bind("HubUI", "StartVisible", true, "Show the control-center overlay on launch.");
             _hubToggleKeyName = Config.Bind("HubUI", "ToggleKey", "F1", "Key to show/hide the control-center overlay (UnityEngine.KeyCode name).");
 
+            BoxOpenPosX = Config.Bind("BoxOpenUI", "PosX", -1f, "Open-box stats overlay X. -1 = auto.");
+            BoxOpenPosY = Config.Bind("BoxOpenUI", "PosY", -1f, "Open-box stats overlay Y. -1 = auto.");
+            BoxOpenPanelWidth = Config.Bind("BoxOpenUI", "PanelWidth", 460f, "Open-box stats overlay width in pixels.");
+            BoxOpenStartVisible = Config.Bind("BoxOpenUI", "StartVisible", false, "Show the open-box stats overlay on launch.");
+            _boxOpenToggleKeyName = Config.Bind("BoxOpenUI", "ToggleKey", "F4", "Key to show/hide the open-box stats overlay (UnityEngine.KeyCode name).");
+
             if (!Enum.TryParse(_toggleKeyName.Value, true, out ToggleKey))
                 ToggleKey = KeyCode.F9;
             if (!Enum.TryParse(_takenToggleKeyName.Value, true, out TakenToggleKey))
@@ -150,6 +165,8 @@ namespace TbhDpsMeter
                 BoxToggleKey = KeyCode.F5;
             if (!Enum.TryParse(_hubToggleKeyName.Value, true, out HubToggleKey))
                 HubToggleKey = KeyCode.F1;
+            if (!Enum.TryParse(_boxOpenToggleKeyName.Value, true, out BoxOpenToggleKey))
+                BoxOpenToggleKey = KeyCode.F4;
 
             Tracker = new DpsTracker(WindowSeconds.Value);
             TakenTracker = new DamageTakenTracker(WindowSeconds.Value);
@@ -160,6 +177,12 @@ namespace TbhDpsMeter
             TryPatch(harmony, typeof(StageState_Patch), "StageManager.set_stageState wave hook");
             StageProbe.TryHook(harmony);
 
+            BoxStore.Dir = System.IO.Path.Combine(BepInEx.Paths.ConfigPath, "dpsmeter_boxlog");
+            BoxOpenStore.Dir = System.IO.Path.Combine(BepInEx.Paths.ConfigPath, "dpsmeter_boxopen");
+            try { foreach (var e in BoxStore.LoadAll(500)) BoxTracker.Events.Add(e); } catch { }
+            try { BoxOpenStore.Load(BoxOpenTracker.Stats); } catch { }
+            BoxOpenTracker.Install(harmony);
+
             try
             {
                 ClassInjector.RegisterTypeInIl2Cpp<OverlayBehaviour>();
@@ -168,6 +191,7 @@ namespace TbhDpsMeter
                 ClassInjector.RegisterTypeInIl2Cpp<FarmOverlayBehaviour>();
                 ClassInjector.RegisterTypeInIl2Cpp<BoxOverlayBehaviour>();
                 ClassInjector.RegisterTypeInIl2Cpp<HubOverlayBehaviour>();
+                ClassInjector.RegisterTypeInIl2Cpp<BoxOpenOverlayBehaviour>();
                 var go = new GameObject("TbhDpsOverlay");
                 UnityEngine.Object.DontDestroyOnLoad(go);
                 go.hideFlags = HideFlags.HideAndDontSave;
@@ -177,7 +201,8 @@ namespace TbhDpsMeter
                 go.AddComponent<FarmOverlayBehaviour>();
                 go.AddComponent<BoxOverlayBehaviour>();
                 go.AddComponent<HubOverlayBehaviour>();
-                Logger.LogInfo("Overlays created. hub " + HubToggleKey + ", DPS " + ToggleKey + ", taken " + TakenToggleKey + ", compare " + CompareToggleKey + ", farm " + FarmToggleKey + ", box " + BoxToggleKey + ".");
+                go.AddComponent<BoxOpenOverlayBehaviour>();
+                Logger.LogInfo("Overlays created. hub " + HubToggleKey + ", DPS " + ToggleKey + ", taken " + TakenToggleKey + ", compare " + CompareToggleKey + ", farm " + FarmToggleKey + ", box " + BoxToggleKey + ", boxopen " + BoxOpenToggleKey + ".");
             }
             catch (Exception ex)
             {
