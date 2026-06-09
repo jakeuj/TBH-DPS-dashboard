@@ -43,28 +43,32 @@ namespace TbhDpsMeter
             }
             catch (Exception e) { Plugin.Logger?.LogWarning("[boxopen] StageBox hook failed: " + e.Message); }
 
-            // Hook B: BoxOpenLog..ctor(string, EGradeType) -> record the drop.
+            // Hook B: LogManager.jtr(LogData) == AddLog. When the added log is a BoxOpenLog, read its
+            // grade + name. A regular instance method patches reliably under Il2CppInterop (unlike the
+            // BoxOpenLog constructor, whose detour backend fails to init). Resolved by signature
+            // (instance, returns void, one LogData param) to survive obfuscation churn.
             try
             {
-                var t = AccessTools.TypeByName("TaskbarHero.Log.BoxOpenLog");
-                MethodBase ctor = null;
-                if (t != null)
+                var lm = AccessTools.TypeByName("TaskbarHero.Log.LogManager");
+                var logData = AccessTools.TypeByName("TaskbarHero.Log.LogData");
+                MethodInfo add = null;
+                if (lm != null && logData != null)
                 {
-                    foreach (var c in t.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                    foreach (var m in lm.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
                     {
-                        var ps = c.GetParameters();
-                        if (ps.Length == 2 && ps[0].ParameterType == typeof(string) && ps[1].ParameterType.Name == "EGradeType") { ctor = c; break; }
+                        var ps = m.GetParameters();
+                        if (m.ReturnType == typeof(void) && ps.Length == 1 && ps[0].ParameterType == logData) { add = m; break; }
                     }
                 }
-                if (ctor != null)
+                if (add != null)
                 {
-                    var post = new HarmonyMethod(typeof(BoxOpenTracker).GetMethod(nameof(CtorPostfix), BindingFlags.NonPublic | BindingFlags.Static));
-                    harmony.Patch(ctor, postfix: post);
-                    Plugin.Logger?.LogInfo("[boxopen] hooked BoxOpenLog ctor");
+                    var post = new HarmonyMethod(typeof(BoxOpenTracker).GetMethod(nameof(AddLogPostfix), BindingFlags.NonPublic | BindingFlags.Static));
+                    harmony.Patch(add, postfix: post);
+                    Plugin.Logger?.LogInfo("[boxopen] hooked LogManager.AddLog (" + add.Name + ")");
                 }
-                else Plugin.Logger?.LogWarning("[boxopen] BoxOpenLog ctor(string,EGradeType) not found");
+                else Plugin.Logger?.LogWarning("[boxopen] LogManager.AddLog(LogData) not found");
             }
-            catch (Exception e) { Plugin.Logger?.LogWarning("[boxopen] BoxOpenLog hook failed: " + e.Message); }
+            catch (Exception e) { Plugin.Logger?.LogWarning("[boxopen] LogManager hook failed: " + e.Message); }
         }
 
         // __0 is the EBoxType param (int-compatible 0..2); Unknown if outside range.
@@ -74,24 +78,30 @@ namespace TbhDpsMeter
             _openingKind = (v >= 0 && v <= 2) ? v : (int)BoxKind.Unknown;
         }
 
-        // __0 = item name, __1 = EGradeType (int-compatible 0..9)
-        private static void CtorPostfix(string __0, TaskbarHero.Data.EGradeType __1)
+        private static int _diagCount;
+
+        // Fires for every log added. We only care about BoxOpenLog entries (one per opened item).
+        private static void AddLogPostfix(TaskbarHero.Log.LogData __0)
         {
             try
             {
+                if (__0 == null) return;
+                var bol = ((Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase)(object)__0)
+                    .TryCast<TaskbarHero.Log.BoxOpenLog>();
+                if (bol == null) return;
+
+                int grade = (int)bol.beoi;          // EGradeType
+                string name = bol.beoh ?? "";       // item name
                 string stage = ""; try { stage = CharacterReader.CurrentStageId(); } catch { }
-                Stats.Add(new BoxOpenEvent
-                {
-                    Time = DateTime.Now,
-                    Grade = (int)__1,
-                    Kind = _openingKind,
-                    Name = __0 ?? "",
-                    Stage = stage,
-                });
+
+                Stats.Add(new BoxOpenEvent { Time = DateTime.Now, Grade = grade, Kind = _openingKind, Name = name, Stage = stage });
+
+                if (_diagCount < 5) { _diagCount++; Plugin.Logger?.LogInfo($"[boxopen] CAPTURED grade={grade} kind={_openingKind} name={name}"); }
+
                 var now = DateTime.Now;
                 if ((now - _lastFlush).TotalSeconds >= 2.0) { _lastFlush = now; BoxOpenStore.Save(Stats); }
             }
-            catch (Exception e) { Plugin.Logger?.LogWarning("[boxopen] ctor postfix: " + e.Message); }
+            catch (Exception e) { Plugin.Logger?.LogWarning("[boxopen] addlog postfix: " + e.Message); }
         }
 
         public static void Flush() { try { BoxOpenStore.Save(Stats); } catch { } }

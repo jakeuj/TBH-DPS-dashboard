@@ -79,7 +79,7 @@ namespace TbhDpsMeter
                 if (_closeRect.Contains(m)) { _visible = false; return; }
                 if (_muteRect.Contains(m)) { Plugin.BoxSoundEnabled.Value = !Plugin.BoxSoundEnabled.Value; return; }
                 if (_gearRect.Contains(m)) { _settingsOpen = !_settingsOpen; return; }
-                if (_clearRect.Contains(m)) { BoxTracker.Events.Clear(); BoxTracker.Version++; _page = 0; return; }
+                if (_clearRect.Contains(m)) { BoxTracker.Events.Clear(); BoxStore.Clear(); BoxTracker.Version++; _page = 0; return; }
                 if (_settingsOpen && _soundRect.Contains(m)) { Plugin.BoxSoundEnabled.Value = !Plugin.BoxSoundEnabled.Value; return; }
                 if (_settingsOpen && _testRect.Contains(m)) { BoxSound.Play(); return; }
                 if (_settingsOpen && _pickRect.Contains(m))
@@ -141,8 +141,17 @@ namespace TbhDpsMeter
                 var perStage = new Dictionary<string, int>();
                 int bossCount = 0;
                 foreach (var e in ev) { string s = string.IsNullOrEmpty(e.Stage) ? "?" : e.Stage; perStage.TryGetValue(s, out int c); perStage[s] = c + 1; if (IsBoss(e.Type)) bossCount++; }
-                double hours = 0; if (ev.Count >= 2) hours = (ev[ev.Count - 1].Time - ev[0].Time).TotalHours;
-                double perHr = hours > 0.0003 ? ev.Count / hours : 0;
+                // per-hour reflects THIS session only (events since launch), so the persisted history
+                // doesn't dilute the live rate to ~0.
+                int sessCount = 0; DateTime sFirst = default, sLast = default;
+                foreach (var e in ev)
+                {
+                    if (e.Time < Plugin.SessionStart) continue;
+                    if (sessCount == 0) sFirst = e.Time;
+                    sLast = e.Time; sessCount++;
+                }
+                double hours = sessCount >= 2 ? (sLast - sFirst).TotalHours : 0;
+                double perHr = hours > 0.0003 ? sessCount / hours : 0;
                 int statRows = Mathf.Min(perStage.Count, 6);
 
                 int rowsPerPage = Mathf.Clamp((int)((Screen.height - 240) / lh), 5, 60);
