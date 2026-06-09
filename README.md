@@ -8,6 +8,8 @@ UI auto-detects **English / 日本語 / 繁體中文 / 简体中文 / Español**
 
 > ⬇️ **Players: just download the zip from [Releases](../../releases/latest) — no compiling needed.**
 
+> 🌐 **Website:** https://tbh-dps-meter.zeabur.app
+
 ![In-game overlay — DPS, stage-compare, farming-planner, damage-taken and box-log panels](image/overview.png)
 
 <table>
