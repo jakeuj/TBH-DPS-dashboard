@@ -81,6 +81,32 @@ const en: Dict = {
     intro: 'Every release of TBH DPS Meter, pulled straight from GitHub.',
     fallback: 'Could not load releases right now — see them on GitHub.',
   },
+  installPage: {
+    lead: 'Install the TBH DPS Meter overlay for TaskBarHero. No compiling — just download, extract, and launch from Steam.',
+    firstTime: {
+      title: 'First-time install (BepInEx not yet installed)',
+      steps: [
+        'Download TBH-DpsMeter-vX.Y.Z.zip from the Releases page.',
+        'In Steam, right-click "TBH: Task Bar Hero" → Manage → Browse local files (you should see TaskBarHero.exe).',
+        'Extract ALL files from the zip into that folder so winhttp.dll, doorstop_config.ini, dotnet and BepInEx sit next to TaskBarHero.exe (choose "Yes" to overwrite if asked).',
+        'Launch through Steam — launching the exe directly will NOT load the plugin.',
+        'The first launch shows a black screen for 1–3 minutes (one-time setup). After that it runs normally.',
+      ],
+    },
+    update: {
+      title: 'Updating the plugin (already installed before)',
+      body: 'Updating only needs the single DLL — BepInEx itself stays untouched. Close the game completely first (while it runs the DLL is locked), overwrite the new TBH.DpsMeter.dll into <game folder>\\BepInEx\\plugins\\, then relaunch through Steam. The panel also shows an in-app update notice with one-click download.',
+    },
+    blackScreen: {
+      title: 'Is the first-launch black screen normal?',
+      body: 'Yes. The first launch runs a one-time 1–3 minute setup. After that, startup is normal.',
+    },
+    uninstall: {
+      title: 'Uninstall',
+      body: 'Delete winhttp.dll, doorstop_config.ini, .doorstop_version, the dotnet\\ folder, and the BepInEx\\ folder from the game folder. This fully restores the vanilla game.',
+    },
+    backHome: '← Back to home',
+  },
 };
 
 export default en;

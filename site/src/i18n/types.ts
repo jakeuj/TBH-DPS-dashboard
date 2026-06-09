@@ -14,4 +14,12 @@ export interface Dict {
   finalCta: { title: string; sub: string };
   footer: { license: string; disclaimer: string; disclaimerLong: string };
   changelog: { title: string; intro: string; fallback: string };
+  installPage: {
+    lead: string;
+    firstTime: { title: string; steps: string[] };
+    update: { title: string; body: string };
+    blackScreen: { title: string; body: string };
+    uninstall: { title: string; body: string };
+    backHome: string;
+  };
 }

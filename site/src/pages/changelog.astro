@@ -1,0 +1,23 @@
+---
+import BaseLayout from '../components/BaseLayout.astro';
+import { getDict } from '../i18n';
+import { fetchReleases } from '../lib/releases';
+const locale = 'en' as const;
+const dict = getDict(locale);
+const t = dict.changelog;
+const releases = await fetchReleases();
+---
+<BaseLayout locale={locale} path="/changelog" title={dict.meta.changelogTitle} description={dict.meta.changelogDesc}>
+  <section class="section"><div class="wrap" style="max-width:760px">
+    <div class="kicker">{t.title}</div>
+    <h1 style="font-size:40px;line-height:1.1;letter-spacing:-1px;margin:8px 0 10px">{t.title}</h1>
+    <p class="lede" style="margin:0 0 36px">{t.intro}</p>
+    {releases.length === 0 && <p style="color:var(--muted)">{t.fallback}</p>}
+    {releases.map((r) => (
+      <article class="qa">
+        <h2 style="font-size:18px;display:flex;justify-content:space-between;gap:16px;align-items:baseline">{r.title} <span style="color:var(--muted);font-weight:400;font-size:14px">{r.date}</span></h2>
+        <div set:html={r.html} />
+      </article>
+    ))}
+  </div></section>
+</BaseLayout>
