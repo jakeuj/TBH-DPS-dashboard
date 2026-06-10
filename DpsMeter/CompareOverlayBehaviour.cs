@@ -47,6 +47,9 @@ namespace TbhDpsMeter
         /// <summary>Stage id F11 is currently focused on; the loot-heatmap panel mirrors this so its
         /// clear-time trend follows F11's stage selection. Null until F11 has loaded runs.</summary>
         public static string ActiveStageId;
+        /// <summary>True while the F11 panel is open. ActiveStageId is only a *live* selection then —
+        /// when the panel is closed it goes stale, and followers should track the current stage instead.</summary>
+        public static bool PanelOpen;
         private int _runIndex;
         private bool _loaded;
         private int _seenVersion = -1;
@@ -83,6 +86,7 @@ namespace TbhDpsMeter
                 }
                 // auto-refresh when a run is saved/deleted while the panel is open
                 if (_visible && RunStore.Version != _seenVersion) Reload();
+                PanelOpen = _visible;
                 if (_visible) HandlePointer();
                 else if (_dragging) _dragging = false;
             }

@@ -41,6 +41,8 @@ namespace TbhDpsMeter
         private readonly List<float> _trend = new List<float>();
         private int _trendVersion = -1;
         private string _trendStage;
+        private string _liveStage = "";      // throttled CharacterReader.CurrentStageId() cache
+        private float _nextStageProbe;
 
         private Rect ScaledRect() => new Rect(_rect.x, _rect.y, _rect.width * _scale, _rect.height * _scale);
 
@@ -126,8 +128,9 @@ namespace TbhDpsMeter
             return Color.Lerp(lo, hi, t);
         }
 
-        // Per-run clear seconds for the trend chart, following F11's currently-selected stage
-        // (CompareOverlayBehaviour.ActiveStageId; falls back to the most-recent run's stage).
+        // Per-run clear seconds for the trend chart. Stage choice: F11's selection while that panel is
+        // OPEN (its ActiveStageId goes stale once closed), otherwise the stage the player is currently
+        // on, falling back to the most-recent run's stage when the live id can't be read.
         // Chronological (oldest → newest), capped to the last ~40 runs of that stage.
         // Rebuilt only when RunStore.Version OR the resolved stage changes.
         private void RebuildTrend()
@@ -136,7 +139,17 @@ namespace TbhDpsMeter
             {
                 var runs = RunStore.LoadAll();           // oldest → newest
 
-                string stage = CompareOverlayBehaviour.ActiveStageId;
+                string stage = CompareOverlayBehaviour.PanelOpen ? CompareOverlayBehaviour.ActiveStageId : null;
+                if (string.IsNullOrEmpty(stage))
+                {
+                    // live stage id is a reflection read and this runs per OnGUI — refresh at most 1/s
+                    if (Time.unscaledTime >= _nextStageProbe)
+                    {
+                        _nextStageProbe = Time.unscaledTime + 1f;
+                        try { _liveStage = CharacterReader.CurrentStageId(); } catch { _liveStage = ""; }
+                    }
+                    stage = _liveStage;
+                }
                 if (string.IsNullOrEmpty(stage) && runs.Count > 0) stage = runs[runs.Count - 1].StageId;
 
                 if (RunStore.Version == _trendVersion && stage == _trendStage) return;
