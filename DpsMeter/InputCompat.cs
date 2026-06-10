@@ -88,6 +88,7 @@ namespace TbhDpsMeter
         private static bool _lb, _f9, _pgUp, _pgDn;            // previous key states
         private static int _seenDownSeq, _seenUpSeq;           // last hook edge counts consumed by Poll
         private static bool _f9Edge, _pgUpEdge, _pgDnEdge;
+        private static bool _fg;   // game window is foreground (refreshed each Poll; gates global input)
 
         private static bool Key(int vk) => (GetAsyncKeyState(vk) & 0x8000) != 0;
 
@@ -374,6 +375,19 @@ namespace TbhDpsMeter
 
                 _wheel = System.Threading.Interlocked.Exchange(ref _hookWheelAccum, 0);
                 _wheelSlot = _hookWheelSlot;
+
+                // GetAsyncKeyState/GetCursorPos are SYSTEM-GLOBAL: with the game in the background,
+                // clicks and hotkeys typed into other apps would still register here (the game itself
+                // never sees them — Windows only routes WM_* messages to the focused window). Track the
+                // prev-states above as usual (so no stale edge fires on refocus) but suppress all edge
+                // outputs while another window has focus. Held-state (_down) is kept for drag release.
+                _fg = GameIsForeground();
+                if (!_fg)
+                {
+                    _pressed = false; _rbPressed = false;
+                    _f9Edge = false; _pgUpEdge = false; _pgDnEdge = false;
+                    _wheel = 0;
+                }
             }
             catch { }
         }
@@ -472,7 +486,9 @@ namespace TbhDpsMeter
             bool down = Key(vk);
             _keyPrev.TryGetValue(vk, out bool prev);
             _keyPrev[vk] = down;
-            return down && !prev;
+            // still track prev-state above so refocusing doesn't replay a stale press, but hotkeys typed
+            // into OTHER apps must not toggle our panels (GetAsyncKeyState is system-global).
+            return down && !prev && _fg;
         }
 
         /// <summary>True while either Ctrl key is held (used to qualify hotkeys like Ctrl+PageUp).</summary>
