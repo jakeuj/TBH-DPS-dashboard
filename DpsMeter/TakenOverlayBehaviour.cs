@@ -35,6 +35,7 @@ namespace TbhDpsMeter
 
         private Rect _resetRect, _prevRect, _nextRect, _handleRect;
         private float _scale = 1f;
+        private readonly PanelResize _resize = new PanelResize();
         private Rect ScaledRect() => new Rect(_rect.x, _rect.y, _rect.width * _scale, _rect.height * _scale);
 
         private Texture2D _white, _bgTex;
@@ -108,6 +109,13 @@ namespace TbhDpsMeter
         {
             if (GameUiState.MenuOpen()) { if (_dragging) { _dragging = false; InputCompat.ReleaseDrag(1); } return; }
             Vector2 m = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
+            // resize grip (bottom-right): width only
+            float rw = _rect.width, dh = 0f;
+            var rr = _resize.Handle(1, m, ref rw, ref dh, 280f, Mathf.Max(280f, Screen.width * 0.95f), 0f, 0f, false);
+            _rect.width = rw;
+            if (rr == PanelResize.Result.Reset) { _rect.width = 300f; Plugin.TakenPanelWidth.Value = _rect.width; return; }
+            if (rr == PanelResize.Result.Committed) { Plugin.TakenPanelWidth.Value = _rect.width; return; }
+            if (rr != PanelResize.Result.None) return;
 
             if (InputCompat.MousePressed())
             {
@@ -324,6 +332,7 @@ namespace TbhDpsMeter
                 cy += 6;
                 GUI.Label(new Rect(ix, cy, iw, 12), Loc.G("element_dist"), _tiny); cy += 12;
                 cy = DrawDistribution(ix, cy, iw, barH, attrParts, total, lh, isAttribute: true);
+                _resize.DrawGrip(_white, _rect);
             }
             catch { }
             finally { GUI.matrix = prevM; }
