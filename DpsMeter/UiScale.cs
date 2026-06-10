@@ -30,6 +30,15 @@ namespace TbhDpsMeter
             return Matrix4x4.Translate(p) * Matrix4x4.Scale(new Vector3(scale, scale, 1f)) * Matrix4x4.Translate(-p);
         }
 
+        /// <summary>Keep a panel's top-left on screen given its current scaled size, so a live drag can't
+        /// push it past the window edge (where the OS clips it). Mirrors the draw-time clamp the panels
+        /// apply via <c>_wantX/_wantY</c>; call it right after a drag moves <paramref name="rect"/>.</summary>
+        public static void ClampToScreen(ref Rect rect, float scale)
+        {
+            rect.x = Mathf.Clamp(rect.x, 0f, Mathf.Max(0f, Screen.width - rect.width * scale));
+            rect.y = Mathf.Clamp(rect.y, 0f, Mathf.Max(0f, Screen.height - rect.height * scale));
+        }
+
         /// <summary>Map a real GUI-space mouse position into the panel's unscaled local space, so existing
         /// hit-tests against unscaled rects keep working after the panel is drawn scaled.</summary>
         public static Vector2 ToLocal(Vector2 m, float pivotX, float pivotY, float scale)

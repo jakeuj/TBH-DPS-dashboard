@@ -166,7 +166,7 @@ namespace TbhDpsMeter
             if (_dragging)
             {
                 if (!InputCompat.OwnsDrag(2)) { _dragging = false; return; }   // a panel on top stole the press
-                if (InputCompat.MouseHeld()) { _rect.x = m.x - _dragOffset.x; _rect.y = m.y - _dragOffset.y; }
+                if (InputCompat.MouseHeld()) { _rect.x = m.x - _dragOffset.x; _rect.y = m.y - _dragOffset.y; UiScale.ClampToScreen(ref _rect, _scale); }
                 if (InputCompat.MouseReleased())
                 {
                     _dragging = false; InputCompat.ReleaseDrag(2);

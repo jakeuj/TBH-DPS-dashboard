@@ -48,7 +48,7 @@ namespace TbhDpsMeter
             { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
             if (_dragging)
             {
-                if (InputCompat.MouseHeld()) { _rect.x = m.x - _dragOffset.x; _rect.y = m.y - _dragOffset.y; }
+                if (InputCompat.MouseHeld()) { _rect.x = m.x - _dragOffset.x; _rect.y = m.y - _dragOffset.y; UiScale.ClampToScreen(ref _rect, _scale); }
                 if (InputCompat.MouseReleased())
                 { _dragging = false; Plugin.PricePosX.Value = _rect.x; Plugin.PricePosY.Value = _rect.y; }
             }
@@ -92,7 +92,10 @@ namespace TbhDpsMeter
                 }
                 else { localized = Loc.G("price_panel"); steamName = ""; }   // adjust-mode placeholder
 
-                float h = Pad + lh * 3f + Pad;
+                int[] hist = haveQuote ? PriceStore.History(steamName) : null;
+                bool hasChart = hist != null && hist.Length >= 2;
+                const float ChartH = 38f;
+                float h = Pad + lh * 3f + (hasChart ? ChartH + 4f : 0f) + Pad;
                 _scale = UiScale.User;
                 _rect.width = Width; _rect.height = h;
 
@@ -135,7 +138,8 @@ namespace TbhDpsMeter
                         trend = $"   <color={col}>{arrow}{Math.Abs(pct):0.#}%</color>";
                     }
                     GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#5fd07c>Steam {PriceStore.Format(cents)}</color>{trend}", _label); cy += lh;
-                    GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#9aa3b0>在售 {qty}{(prevCents > 0 ? "   <size=10>24h 波動</size>" : "")}</color>", _tiny);
+                    GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#9aa3b0>在售 {qty}{(prevCents > 0 ? "   <size=10>24h 波動</size>" : "")}</color>", _tiny); cy += lh;
+                    if (hasChart) { DrawSparkline(new Rect(ix, cy + 2f, iw, ChartH), hist); }
                 }
                 else
                 {
@@ -145,6 +149,49 @@ namespace TbhDpsMeter
             }
             catch { }
             finally { GUI.matrix = prevM; }
+        }
+
+        // mini 7-day price curve. Maps the cents series into the plot rect and draws a polyline, with the
+        // min/max price labelled on the right. Last point dotted to mark "now".
+        private void DrawSparkline(Rect area, int[] cents)
+        {
+            int n = cents.Length;
+            int min = int.MaxValue, max = int.MinValue;
+            for (int i = 0; i < n; i++) { if (cents[i] < min) min = cents[i]; if (cents[i] > max) max = cents[i]; }
+            float span = Mathf.Max(1, max - min);
+            float plotW = area.width - 44f;   // leave room for the price labels on the right
+            float x0 = area.x, y0 = area.y, ph = area.height;
+            // frame
+            DrawFill(x0, y0, plotW, ph, new Color(1f, 1f, 1f, 0.04f));
+            DrawFill(x0, y0, plotW, 1, new Color(1, 1, 1, 0.10f));
+            DrawFill(x0, y0 + ph - 1, plotW, 1, new Color(1, 1, 1, 0.10f));
+            float dx = n > 1 ? plotW / (n - 1) : 0f;
+            var line = new Color(0.45f, 0.7f, 1f, 0.95f);
+            Vector2 prev = Vector2.zero;
+            for (int i = 0; i < n; i++)
+            {
+                float t = (cents[i] - min) / span;
+                float px = x0 + dx * i;
+                float py = y0 + ph - 3f - t * (ph - 6f);
+                if (i > 0) DrawSeg(prev, new Vector2(px, py), line);
+                prev = new Vector2(px, py);
+            }
+            DrawFill(prev.x - 2f, prev.y - 2f, 4f, 4f, new Color(0.6f, 0.85f, 1f, 1f));   // "now" dot
+            // min/max labels (right gutter)
+            GUI.Label(new Rect(x0 + plotW + 2f, y0 - 3f, 44f, 14f), $"<size=9><color=#9aa3b0>{PriceStore.Format(max)}</color></size>", _tiny);
+            GUI.Label(new Rect(x0 + plotW + 2f, y0 + ph - 12f, 44f, 14f), $"<size=9><color=#9aa3b0>{PriceStore.Format(min)}</color></size>", _tiny);
+            GUI.Label(new Rect(x0 + 2f, y0 + ph - 11f, 60f, 12f), "<size=9><color=#5a626e>7d</color></size>", _tiny);
+        }
+
+        private void DrawFill(float x, float y, float w, float h, Color c)
+        { var p = GUI.color; GUI.color = c; GUI.DrawTexture(new Rect(x, y, w, h), _white); GUI.color = p; }
+
+        // thin line as a row of 2px dots (matches TrendChart; safe under the active GUI.matrix)
+        private void DrawSeg(Vector2 a, Vector2 b, Color c)
+        {
+            float len = Vector2.Distance(a, b);
+            int steps = Mathf.Max(1, Mathf.CeilToInt(len / 3f));
+            for (int i = 0; i <= steps; i++) { var p = Vector2.Lerp(a, b, i / (float)steps); DrawFill(p.x - 1, p.y - 1, 2, 2, c); }
         }
 
         private void DrawBorder(Rect r, Color c)

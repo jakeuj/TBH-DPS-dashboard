@@ -91,7 +91,7 @@ namespace TbhDpsMeter
             if (_dragging)
             {
                 if (!InputCompat.OwnsDrag(5)) { _dragging = false; return; }
-                if (InputCompat.MouseHeld()) { _rect.x = m.x - _dragOffset.x; _rect.y = m.y - _dragOffset.y; }
+                if (InputCompat.MouseHeld()) { _rect.x = m.x - _dragOffset.x; _rect.y = m.y - _dragOffset.y; UiScale.ClampToScreen(ref _rect, _scale); }
                 if (InputCompat.MouseReleased()) { _dragging = false; InputCompat.ReleaseDrag(5); _wantX = _rect.x; _wantY = _rect.y; Plugin.HubPosX.Value = _rect.x; Plugin.HubPosY.Value = _rect.y; }
             }
         }
