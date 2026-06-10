@@ -14,7 +14,7 @@ namespace TbhDpsMeter
     {
         public const string Guid = "tbh.dpsmeter";
         public const string Name = "TBH DPS Meter";
-        public const string Version = "0.8.4";
+        public const string Version = "0.8.5";
 
         public static DpsTracker Tracker;
         public static DamageTakenTracker TakenTracker;
