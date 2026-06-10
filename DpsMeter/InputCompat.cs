@@ -54,6 +54,12 @@ namespace TbhDpsMeter
         [DllImport("user32.dll")] private static extern bool PostThreadMessage(uint idThread, uint Msg, IntPtr wParam, IntPtr lParam);
         [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
         private const uint WM_QUIT = 0x0012;
+        // Thread messages (WM_APP+) that tell the hook thread to install/remove the hook. The hook
+        // only exists while the game is foreground — a WH_MOUSE_LL hook makes EVERY system mouse
+        // event round-trip into this process, so leaving it installed while the game idles in the
+        // background adds system-wide cursor latency (background process priority + GC pauses stall
+        // the hook thread, and the whole desktop's mouse waits on it).
+        private const uint MSG_HOOK_INSTALL = 0x8001, MSG_HOOK_REMOVE = 0x8002;
 
         private const int WH_MOUSE_LL = 14;
         private const int HC_ACTION = 0;
@@ -123,6 +129,11 @@ namespace TbhDpsMeter
         private static bool _hookTried;
         private static Thread _hookThread;
         private static uint _hookThreadId;
+        // Main-thread-readable mirror of "hook is live" (_hookHandle belongs to the hook thread).
+        private static volatile bool _hookInstalled;
+        private static bool _hookLoggedOnce;
+        private static float _lostFocusAt = -1f;   // when the game last left the foreground (-1 = focused)
+        private const float UnhookGraceSecs = 0.5f;  // brief alt-tabs don't churn install/uninstall
 
         private static void EnsureMouseHook()
         {
@@ -130,11 +141,13 @@ namespace TbhDpsMeter
             _hookTried = true;
             try
             {
-                // Install + pump the WH_MOUSE_LL hook on its OWN thread. A low-level hook is dispatched
+                // Pump the WH_MOUSE_LL hook on its OWN thread. A low-level hook is dispatched
                 // through the installing thread's message queue and BLOCKS system-wide mouse delivery
                 // until the callback returns; on the Unity main thread that means high-Hz mice (500–
                 // 1000Hz) pile up behind the frame loop and stutter. A dedicated pump processes each
-                // event in microseconds, decoupled from rendering.
+                // event in microseconds, decoupled from rendering. The hook itself is installed and
+                // removed on demand (MSG_HOOK_INSTALL/REMOVE from Poll) so it only exists while the
+                // game is the foreground window.
                 _hookProc = MouseHookCallback;
                 _hookThread = new Thread(HookThreadProc) { IsBackground = true, Name = "TbhMouseHook" };
                 _hookThread.Start();
@@ -147,26 +160,65 @@ namespace TbhDpsMeter
             try
             {
                 _hookThreadId = GetCurrentThreadId();
-                _hookHandle = SetWindowsHookEx(WH_MOUSE_LL, _hookProc, GetModuleHandle(null), 0);
-                Plugin.Logger?.LogInfo(_hookHandle != IntPtr.Zero
-                    ? "Mouse click-through guard installed (WH_MOUSE_LL, dedicated thread)."
-                    : "WH_MOUSE_LL install failed; panels will still pass clicks through.");
-                if (_hookHandle == IntPtr.Zero) return;
-                // pump until WM_QUIT (posted by UninstallMouseHook)
+                // Above-normal priority so a busy foreground app can't starve the pump while the
+                // game (and this thread) sit in a deprioritized background process.
+                try { Thread.CurrentThread.Priority = System.Threading.ThreadPriority.Highest; } catch { }
+                // pump until WM_QUIT (posted by UninstallMouseHook); install/remove arrive as
+                // thread messages from Poll() on the main thread
                 while (GetMessage(out var msg, IntPtr.Zero, 0, 0) > 0)
                 {
-                    TranslateMessage(ref msg);
-                    DispatchMessage(ref msg);
+                    if (msg.message == MSG_HOOK_INSTALL && _hookHandle == IntPtr.Zero)
+                    {
+                        _hookHandle = SetWindowsHookEx(WH_MOUSE_LL, _hookProc, GetModuleHandle(null), 0);
+                        _hookInstalled = _hookHandle != IntPtr.Zero;
+                        if (_hookInstalled) _hookLbDown = false;   // forget any stale press from before
+                        if (!_hookLoggedOnce)
+                        {
+                            _hookLoggedOnce = true;
+                            Plugin.Logger?.LogInfo(_hookInstalled
+                                ? "Mouse click-through guard active (WH_MOUSE_LL, foreground-only)."
+                                : "WH_MOUSE_LL install failed; panels will still pass clicks through.");
+                        }
+                    }
+                    else if (msg.message == MSG_HOOK_REMOVE && _hookHandle != IntPtr.Zero)
+                    {
+                        UnhookWindowsHookEx(_hookHandle);
+                        _hookHandle = IntPtr.Zero;
+                        _hookInstalled = false;
+                    }
+                    else { TranslateMessage(ref msg); DispatchMessage(ref msg); }
                 }
             }
             catch (Exception e) { Plugin.Logger?.LogWarning("[hook] thread ex: " + e.Message); }
+            finally
+            {
+                try { if (_hookHandle != IntPtr.Zero) { UnhookWindowsHookEx(_hookHandle); _hookHandle = IntPtr.Zero; _hookInstalled = false; } }
+                catch { }
+            }
+        }
+
+        /// <summary>Install the hook only while the game is foreground; remove it (after a short grace
+        /// period) when the game goes to the background, so an idle/backgrounded game never adds
+        /// latency to the rest of the desktop's mouse. Posts are retried every frame until the state
+        /// matches, which also covers the race where Poll posts before the thread's queue exists.</summary>
+        private static void UpdateHookLifecycle(IntPtr gameHwnd)
+        {
+            if (_hookThreadId == 0) return;
+            bool foreground = gameHwnd != IntPtr.Zero && GetForegroundWindow() == gameHwnd;
+            bool want;
+            if (foreground) { _lostFocusAt = -1f; want = true; }
+            else
+            {
+                if (_lostFocusAt < 0f) _lostFocusAt = Time.unscaledTime;
+                want = Time.unscaledTime - _lostFocusAt < UnhookGraceSecs;
+            }
+            if (want != _hookInstalled)
+                PostThreadMessage(_hookThreadId, want ? MSG_HOOK_INSTALL : MSG_HOOK_REMOVE, IntPtr.Zero, IntPtr.Zero);
         }
 
         /// <summary>Remove the hook (call on shutdown so we don't leave a global hook dangling).</summary>
         public static void UninstallMouseHook()
         {
-            try { if (_hookHandle != IntPtr.Zero) { UnhookWindowsHookEx(_hookHandle); _hookHandle = IntPtr.Zero; } }
-            catch { }
             try { if (_hookThreadId != 0) PostThreadMessage(_hookThreadId, WM_QUIT, IntPtr.Zero, IntPtr.Zero); }
             catch { }
         }
@@ -283,9 +335,10 @@ namespace TbhDpsMeter
                     _pos = new Vector2(cp.X * _sx, cp.Y * _sy);
                     // hand the hook thread a fresh snapshot (it can't read Unity APIs itself)
                     _hookGameHwnd = h; _scrW = Screen.width; _scrH = Screen.height;
+                    UpdateHookLifecycle(h);
                 }
 
-                if (_hookHandle != IntPtr.Zero)
+                if (_hookInstalled)
                 {
                     // Hook is the source of truth (GetAsyncKeyState goes blind once we swallow).
                     // Latch edges via the sequence counters so single-frame clicks aren't lost.

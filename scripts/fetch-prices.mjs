@@ -80,6 +80,54 @@ if (ref && refDist <= 18 * 3600 * 1000) {   // only if we actually have a point 
   }
 }
 
+// per-item price series for the plugin's sparkline: each item's sampled prices over the last 7 days,
+// plus the current live price as the final point. Drawn as a mini curve in the price box.
+const HIST_WINDOW_MS = 7 * DAY;
+const histCut = now - HIST_WINDOW_MS;
+const windowPts = history.snapshots.filter(s => s.t >= histCut);
+for (const [name, v] of Object.entries(items)) {
+  const arr = [];
+  for (const s of windowPts) { const c = s.p[name]; if (c != null) arr.push(c); }
+  if (arr.length === 0 || arr[arr.length - 1] !== v.lowestCents) arr.push(v.lowestCents);
+  if (arr.length) v.hist = arr;
+}
+
+// ---- 24h volume + median sale price (priceoverview is per-item & rate-limited, so refresh only every
+// ~6h and persist between the 30-min price runs inside history.vol). ----
+const VOL_REFRESH_MS = 6 * 3600 * 1000;
+let vol = (history.vol && history.vol.items) ? history.vol : { at: 0, items: {} };
+const volAge = vol.at ? now - vol.at : Infinity;
+if (volAge >= VOL_REFRESH_MS) {
+  const names = Object.keys(items);
+  let done = 0;
+  for (const name of names) {
+    let pj = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const r = await fetch(`https://steamcommunity.com/market/priceoverview/?appid=${APPID}&currency=1&market_hash_name=${encodeURIComponent(name)}`,
+          { headers: { 'User-Agent': UA } });
+        if (r.status === 429) { await sleep(15000); continue; }   // rate-limited: wait and retry
+        if (r.ok) { pj = await r.json(); break; }
+      } catch { /* retry */ }
+      await sleep(4000);
+    }
+    if (pj && pj.success) {
+      const vRaw = (pj.volume || '').replace(/[^0-9]/g, '');
+      const mRaw = (pj.median_price || '').replace(/[^0-9.]/g, '');
+      vol.items[name] = { vol: vRaw ? parseInt(vRaw, 10) : 0, medianCents: mRaw ? Math.round(parseFloat(mRaw) * 100) : 0 };
+      done++;
+    }
+    await sleep(3500);   // ~17 req/min — stay under Steam's unauthenticated limit
+  }
+  vol.at = now;
+  console.log(`refreshed volume/median for ${done}/${names.length} items`);
+}
+history.vol = vol;
+for (const [name, v] of Object.entries(items)) {
+  const vr = vol.items[name];
+  if (vr) { v.vol = vr.vol; v.medianCents = vr.medianCents; }
+}
+
 const out = { cachedAt: now, appid: APPID, currency: currency || '$', count: Object.keys(items).length, items };
 await writeFile('prices.json', JSON.stringify(out));
 await writeFile('history.json', JSON.stringify(history));

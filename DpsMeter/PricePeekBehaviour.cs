@@ -80,7 +80,7 @@ namespace TbhDpsMeter
                 EnsureAssets();
                 int fs = Plugin.FontSize.Value; float lh = fs + 6;
 
-                string localized, steamName; bool haveQuote = false; int cents = 0, qty = 0, prevCents = -1;
+                string localized, steamName; PriceStore.Info info = null;
                 if (key != 0)
                 {
                     localized = ItemNameStore.Get(key);
@@ -88,11 +88,12 @@ namespace TbhDpsMeter
                     if (string.IsNullOrEmpty(localized)) localized = en;
                     if (string.IsNullOrEmpty(localized)) localized = "#" + key;
                     steamName = (HeroProbe.HoveredIsGear && !string.IsNullOrEmpty(HeroProbe.HoveredGrade)) ? $"{en} ({HeroProbe.HoveredGrade}) A" : en;
-                    haveQuote = PriceStore.TryGet(steamName, out cents, out qty, out prevCents);
+                    info = PriceStore.Get(steamName);
                 }
                 else { localized = Loc.G("price_panel"); steamName = ""; }   // adjust-mode placeholder
 
-                int[] hist = haveQuote ? PriceStore.History(steamName) : null;
+                bool haveQuote = info != null;
+                int[] hist = info?.Hist;
                 bool hasChart = hist != null && hist.Length >= 2;
                 const float ChartH = 38f;
                 float h = Pad + lh * 3f + (hasChart ? ChartH + 4f : 0f) + Pad;
@@ -130,16 +131,21 @@ namespace TbhDpsMeter
                 else if (haveQuote)
                 {
                     string trend = "";
-                    if (prevCents > 0)
+                    if (info.PrevCents > 0)
                     {
-                        double pct = (cents - prevCents) * 100.0 / prevCents;
+                        double pct = (info.Cents - info.PrevCents) * 100.0 / info.PrevCents;
                         string col = pct > 0.05 ? "#5fd07c" : pct < -0.05 ? "#ef6a5a" : "#9aa3b0";
                         string arrow = pct > 0.05 ? "▲" : pct < -0.05 ? "▼" : "→";
                         trend = $"   <color={col}>{arrow}{Math.Abs(pct):0.#}%</color>";
                     }
-                    GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#5fd07c>Steam {PriceStore.Format(cents)}</color>{trend}", _label); cy += lh;
-                    GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#9aa3b0>在售 {qty}{(prevCents > 0 ? "   <size=10>24h 波動</size>" : "")}</color>", _tiny); cy += lh;
-                    if (hasChart) { DrawSparkline(new Rect(ix, cy + 2f, iw, ChartH), hist); }
+                    GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#5fd07c>Steam {PriceStore.Format(info.Cents)}</color>{trend}", _label); cy += lh;
+                    // stats line: median sale price · live listings · 24h volume (each only if known)
+                    var sb = new System.Text.StringBuilder();
+                    if (info.MedianCents >= 0) sb.Append($"中位 {PriceStore.Format(info.MedianCents)}   ");
+                    sb.Append($"在售 {info.Qty}");
+                    if (info.Vol >= 0) sb.Append($"   24h成交 {info.Vol}");
+                    GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#9aa3b0>{sb}</color>", _tiny); cy += lh;
+                    if (hasChart) DrawSparkline(new Rect(ix, cy + 2f, iw, ChartH), hist);
                 }
                 else
                 {

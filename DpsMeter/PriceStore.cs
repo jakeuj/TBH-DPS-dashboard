@@ -16,10 +16,20 @@ namespace TbhDpsMeter
         public static string Currency = "$";
         public static long CachedAtMs;   // ms since unix epoch, from prices.json
 
-        // hash_name -> {lowest sell price in cents, listings count, price ~24h ago (-1 = unknown)}.
-        // Case-insensitive.
-        private static readonly Dictionary<string, int[]> _items =
-            new Dictionary<string, int[]>(StringComparer.OrdinalIgnoreCase);
+        /// <summary>Per-item market data from prices.json.</summary>
+        public sealed class Info
+        {
+            public int Cents;          // current lowest sell price (cents)
+            public int Qty;            // live listing count
+            public int PrevCents = -1; // price ~24h ago (-1 = unknown, before 24h of cron history)
+            public int[] Hist;         // sampled price series over the last 7 days (for the sparkline), or null
+            public int Vol = -1;       // units sold in the last 24h (-1 = unknown; refreshed ~every 6h)
+            public int MedianCents = -1; // median sale price in cents (-1 = unknown)
+        }
+
+        // hash_name -> Info. Case-insensitive.
+        private static readonly Dictionary<string, Info> _items =
+            new Dictionary<string, Info>(StringComparer.OrdinalIgnoreCase);
 
         private const string Url = "https://cdn.jsdelivr.net/gh/WarmBed/TBH-DPS-dashboard@data/prices.json";
         private const string Ua = "TBH-DpsMeter-Prices";
@@ -47,11 +57,22 @@ namespace TbhDpsMeter
                             {
                                 var v = Json.Obj(kv.Value);
                                 if (v == null) continue;
-                                int cents = (int)Json.Long(Json.Get(v, "lowestCents"));
-                                int qty = (int)Json.Long(Json.Get(v, "qty"));
+                                var info = new Info();
+                                info.Cents = (int)Json.Long(Json.Get(v, "lowestCents"));
+                                info.Qty = (int)Json.Long(Json.Get(v, "qty"));
                                 var pcv = Json.Get(v, "prevCents");
-                                int prev = pcv != null ? (int)Json.Long(pcv) : -1;
-                                _items[kv.Key] = new[] { cents, qty, prev };
+                                info.PrevCents = pcv != null ? (int)Json.Long(pcv) : -1;
+                                var volv = Json.Get(v, "vol");
+                                info.Vol = volv != null ? (int)Json.Long(volv) : -1;
+                                var medv = Json.Get(v, "medianCents");
+                                info.MedianCents = medv != null ? (int)Json.Long(medv) : -1;
+                                var harr = Json.Arr(Json.Get(v, "hist"));
+                                if (harr != null && harr.Count > 0)
+                                {
+                                    info.Hist = new int[harr.Count];
+                                    for (int i = 0; i < harr.Count; i++) info.Hist[i] = (int)Json.Long(harr[i]);
+                                }
+                                _items[kv.Key] = info;
                                 n++;
                             }
                         State = St.Ready;
@@ -68,9 +89,20 @@ namespace TbhDpsMeter
         {
             cents = 0; qty = 0; prevCents = -1;
             if (string.IsNullOrEmpty(hashName)) return false;
-            if (_items.TryGetValue(hashName, out var v)) { cents = v[0]; qty = v[1]; prevCents = v.Length > 2 ? v[2] : -1; return true; }
+            if (_items.TryGetValue(hashName, out var v)) { cents = v.Cents; qty = v.Qty; prevCents = v.PrevCents; return true; }
             return false;
         }
+
+        /// <summary>The sampled 7-day price series (cents) for a hash_name, or null if none/too short.</summary>
+        public static int[] History(string hashName)
+        {
+            if (string.IsNullOrEmpty(hashName)) return null;
+            return _items.TryGetValue(hashName, out var v) ? v.Hist : null;
+        }
+
+        /// <summary>Full market record for a hash_name, or null if the item isn't listed.</summary>
+        public static Info Get(string hashName)
+            => (!string.IsNullOrEmpty(hashName) && _items.TryGetValue(hashName, out var v)) ? v : null;
 
         /// <summary>Format cents as a currency string, e.g. 1234 -> "$12.34".</summary>
         public static string Format(int cents)
