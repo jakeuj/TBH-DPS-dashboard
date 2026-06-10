@@ -22,7 +22,8 @@ namespace TbhDpsMeter
             public int Cents;          // current lowest sell price (cents)
             public int Qty;            // live listing count
             public int PrevCents = -1; // price ~24h ago (-1 = unknown, before 24h of cron history)
-            public int[] Hist;         // sampled price series over the last 7 days (for the sparkline), or null
+            public int[] HistC;        // 7-day price series (cents) for the sparkline, or null
+            public int[] HistT;        // matching unix-second timestamps (or null if the feed had no times)
             public int Vol = -1;       // units sold in the last 24h (-1 = unknown; refreshed ~every 6h)
             public int MedianCents = -1; // median sale price in cents (-1 = unknown)
         }
@@ -69,8 +70,15 @@ namespace TbhDpsMeter
                                 var harr = Json.Arr(Json.Get(v, "hist"));
                                 if (harr != null && harr.Count > 0)
                                 {
-                                    info.Hist = new int[harr.Count];
-                                    for (int i = 0; i < harr.Count; i++) info.Hist[i] = (int)Json.Long(harr[i]);
+                                    var cs = new System.Collections.Generic.List<int>(harr.Count);
+                                    var ts = new System.Collections.Generic.List<int>(harr.Count);
+                                    foreach (var e in harr)
+                                    {
+                                        var pair = Json.Arr(e);   // new format: [tSec, cents]
+                                        if (pair != null && pair.Count >= 2) { ts.Add((int)Json.Long(pair[0])); cs.Add((int)Json.Long(pair[1])); }
+                                        else cs.Add((int)Json.Long(e));   // old flat format: just cents
+                                    }
+                                    if (cs.Count > 0) { info.HistC = cs.ToArray(); if (ts.Count == cs.Count) info.HistT = ts.ToArray(); }
                                 }
                                 _items[kv.Key] = info;
                                 n++;
@@ -91,13 +99,6 @@ namespace TbhDpsMeter
             if (string.IsNullOrEmpty(hashName)) return false;
             if (_items.TryGetValue(hashName, out var v)) { cents = v.Cents; qty = v.Qty; prevCents = v.PrevCents; return true; }
             return false;
-        }
-
-        /// <summary>The sampled 7-day price series (cents) for a hash_name, or null if none/too short.</summary>
-        public static int[] History(string hashName)
-        {
-            if (string.IsNullOrEmpty(hashName)) return null;
-            return _items.TryGetValue(hashName, out var v) ? v.Hist : null;
         }
 
         /// <summary>Full market record for a hash_name, or null if the item isn't listed.</summary>

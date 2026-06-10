@@ -41,55 +41,70 @@ while (start < total && guard++ < 40) {
   if (start < total) await sleep(2000);  // be gentle to Steam between pages
 }
 
-// ---- price history (for the client's 波動 / 24h change display) ----
-// The data branch is republished as a single orphan commit each run (no git history), so we instead
-// keep a rolling window inside history.json and read it back each run from raw.githubusercontent
-// (near-real-time, unlike jsDelivr's long cache). We sample sparsely (~2h) and keep ~8 days, then stamp
-// each item with prevCents = its price closest to 24h ago, so the plugin can show the change %.
+// ---- price history (item-major). Each item keeps a rolling [[tMs, cents], ...] series in history.json,
+// read back each run from raw.githubusercontent (the data branch is force-pushed as a single orphan
+// commit, so we persist the window inside the file). On first sight of an item we BACKFILL its real
+// history from tbh-market's public API (Steam data, no login); afterwards our own 30-min cron appends
+// forward. Sampled ~2h, kept ~8 days. Item-major also avoids repeating item names every snapshot.
 const now = Date.now();
 const DAY = 86400000;
 const HISTORY_DAYS = 8;
-const SAMPLE_GAP_MS = 110 * 60 * 1000;   // ~2h spacing -> ~96 points over 8 days
+const SAMPLE_GAP_MS = 110 * 60 * 1000;     // ~2h spacing for forward points
+const BUCKET_MS = 2 * 3600 * 1000;         // downsample backfilled points to ~2h
+const HIST_WINDOW_MS = 7 * DAY;            // window shipped to the plugin
+const MAX_BACKFILL = 400;                  // per-run cap on tbh-market fetches (one-time courtesy burst)
 const REPO = process.env.GITHUB_REPOSITORY || 'WarmBed/TBH-DPS-dashboard';
 const HISTORY_URL = `https://raw.githubusercontent.com/${REPO}/data/history.json`;
+const TBH_ITEM = 'https://tbh-market.com/api/item/';
 
-let history = { snapshots: [] };
+let history = { items: {}, vol: { at: 0, items: {} } };
 try {
   const r = await fetch(HISTORY_URL, { headers: { 'User-Agent': UA } });
-  if (r.ok) { const j = await r.json(); if (Array.isArray(j?.snapshots)) history = j; }
+  if (r.ok) { const j = await r.json(); if (j && typeof j === 'object') history = j; }
 } catch { /* first run / 404 -> empty history */ }
+if (!history.items || Array.isArray(history.items)) history.items = {};   // ignore old snapshot-major format
+if (!history.vol) history.vol = { at: 0, items: {} };
 
-// append a sparse snapshot (skip if the last point is newer than the sample gap)
-const last = history.snapshots[history.snapshots.length - 1];
-if (!last || now - last.t >= SAMPLE_GAP_MS) {
-  const p = {};
-  for (const [k, v] of Object.entries(items)) p[k] = v.lowestCents;
-  history.snapshots.push({ t: now, p });
+function downsample(points, bucketMs) {
+  const out = []; let lastB = -2;
+  for (const p of points) { const b = Math.floor(p[0] / bucketMs); if (b !== lastB) { out.push(p); lastB = b; } }
+  return out;
 }
+async function tbhBackfill(name) {
+  try {
+    const r = await fetch(TBH_ITEM + encodeURIComponent(name), { headers: { 'User-Agent': UA } });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const h = Array.isArray(j?.history) ? j.history : null;
+    if (!h) return null;
+    const pts = h.filter(p => p && p.recorded_at && p.sell_price != null).map(p => [p.recorded_at * 1000, p.sell_price]);
+    return downsample(pts, BUCKET_MS);
+  } catch { return null; }
+}
+
 const cutoff = now - HISTORY_DAYS * DAY;
-history.snapshots = history.snapshots.filter(s => s && s.t >= cutoff);
-
-// reference price ~24h ago = the snapshot whose timestamp is closest to now-24h
-let ref = null, refDist = Infinity;
-for (const s of history.snapshots) { const d = Math.abs(s.t - (now - DAY)); if (d < refDist) { refDist = d; ref = s; } }
-let stamped = 0;
-if (ref && refDist <= 18 * 3600 * 1000) {   // only if we actually have a point within ~18h of the 24h mark
-  for (const [name, v] of Object.entries(items)) {
-    const pc = ref.p[name];
-    if (pc != null) { v.prevCents = pc; v.prevAt = ref.t; stamped++; }
+let backfilled = 0;
+for (const [name, v] of Object.entries(items)) {
+  let series = Array.isArray(history.items[name]) ? history.items[name] : null;
+  if ((!series || series.length < 4) && backfilled < MAX_BACKFILL) {   // one-time real-history seed
+    const seed = await tbhBackfill(name);
+    if (seed && seed.length) { series = seed; backfilled++; await sleep(1500); }   // be gentle to tbh-market
   }
+  if (!series) series = [];
+  const lastPt = series[series.length - 1];
+  if (!lastPt || now - lastPt[0] >= SAMPLE_GAP_MS) series.push([now, v.lowestCents]);   // forward point
+  history.items[name] = series.filter(p => p[0] >= cutoff);                             // prune window
 }
 
-// per-item price series for the plugin's sparkline: each item's sampled prices over the last 7 days,
-// plus the current live price as the final point. Drawn as a mini curve in the price box.
-const HIST_WINDOW_MS = 7 * DAY;
-const histCut = now - HIST_WINDOW_MS;
-const windowPts = history.snapshots.filter(s => s.t >= histCut);
+// prevCents (~24h ago) + the last-7-day series shipped to the plugin (timestamps in seconds to stay small)
+let stamped = 0;
 for (const [name, v] of Object.entries(items)) {
-  const arr = [];
-  for (const s of windowPts) { const c = s.p[name]; if (c != null) arr.push(c); }
-  if (arr.length === 0 || arr[arr.length - 1] !== v.lowestCents) arr.push(v.lowestCents);
-  if (arr.length) v.hist = arr;
+  const series = history.items[name] || [];
+  let ref = null, rd = Infinity;
+  for (const p of series) { const d = Math.abs(p[0] - (now - DAY)); if (d < rd) { rd = d; ref = p; } }
+  if (ref && rd <= 18 * 3600 * 1000) { v.prevCents = ref[1]; v.prevAt = ref[0]; stamped++; }
+  const win = series.filter(p => p[0] >= now - HIST_WINDOW_MS);
+  if (win.length) v.hist = win.map(p => [Math.floor(p[0] / 1000), p[1]]);
 }
 
 // ---- 24h volume + median sale price (priceoverview is per-item & rate-limited, so refresh only every
@@ -131,4 +146,4 @@ for (const [name, v] of Object.entries(items)) {
 const out = { cachedAt: now, appid: APPID, currency: currency || '$', count: Object.keys(items).length, items };
 await writeFile('prices.json', JSON.stringify(out));
 await writeFile('history.json', JSON.stringify(history));
-console.log(`wrote prices.json: ${out.count} items, currency='${out.currency}', total reported ${total}; history ${history.snapshots.length} pts, prevCents on ${stamped} items`);
+console.log(`wrote prices.json: ${out.count} items; backfilled ${backfilled} from tbh-market, prevCents on ${stamped}, hist series for ${Object.keys(history.items).length} items`);

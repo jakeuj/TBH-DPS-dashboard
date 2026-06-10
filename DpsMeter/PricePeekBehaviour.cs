@@ -3,19 +3,21 @@ using UnityEngine;
 
 namespace TbhDpsMeter
 {
-    /// <summary>IMGUI overlay: shows the Steam Community Market price of the item under the native in-game
-    /// tooltip. The hovered item is read by HeroProbe.PollHoveredItem (HeroProbe.HoveredKey/Grade/IsGear);
-    /// the price comes from PriceStore (our cron-built prices.json on jsDelivr). It also shows the 24h
-    /// change (波動) from prevCents once the cron has a day of history. Normally non-interactive and shown
-    /// only on hover; pressing the adjust key (default F4) pins it visible and draggable so the user can
-    /// place it, with the position saved to config. Toggled on/off from the F1 control center.</summary>
+    /// <summary>IMGUI overlay: Steam Community Market price of the item under the native in-game tooltip.
+    /// The hovered item is read by HeroProbe.PollHoveredItem; the price/median/volume/7-day history come
+    /// from PriceStore (cron-built prices.json on jsDelivr). Shows price, 24h change (波動), median,
+    /// listings, 24h volume, and a mini 7-day price curve. Right-click an item to PIN the box to it (it
+    /// stays put while you move the mouse onto the curve); hovering a curve point then shows that point's
+    /// time, price, and change vs now. The adjust key (default F4) pins it visible and draggable to set
+    /// its position. Toggled on/off from the F1 control center.</summary>
     public class PricePeekBehaviour : MonoBehaviour
     {
         public PricePeekBehaviour(IntPtr ptr) : base(ptr) { }
 
-        private const int Slot = 8;        // InputCompat panel slot (drag capture in adjust mode)
+        private const int Slot = 8;        // InputCompat panel slot (input capture in adjust/pinned modes)
         private const float Pad = 8f;
         private const float Width = 240f;
+        private const float ChartH = 40f;
         private Rect _rect = new Rect(0, 0, Width, 0);
         private Texture2D _white, _bgTex;
         private GUIStyle _title, _label, _dim, _tiny, _box;
@@ -23,6 +25,8 @@ namespace TbhDpsMeter
         private float _scale = 1f;
         private bool _adjust;              // position-adjust (drag) mode
         private bool _dragging; private Vector2 _dragOffset;
+        private int _pinnedKey;            // 0 = not pinned; otherwise the box is locked to this item
+        private string _pinnedLocalized, _pinnedSteamName;
 
         private Rect ScaledRect() => new Rect(_rect.x, _rect.y, _rect.width * _scale, _rect.height * _scale);
         private bool Enabled => Plugin.PricePeekEnabled == null || Plugin.PricePeekEnabled.Value;
@@ -31,14 +35,36 @@ namespace TbhDpsMeter
         {
             try
             {
-                if (Enabled) PriceStore.EnsureLoaded();
-                if (InputCompat.KeyPressed(Plugin.PriceAdjustKey)) _adjust = !_adjust && Enabled;
-                bool capture = _adjust && Enabled;
+                if (!Enabled) { if (_pinnedKey != 0) _pinnedKey = 0; return; }
+                PriceStore.EnsureLoaded();
+                InputCompat.Poll();   // idempotent per frame; make sure right-click edge is fresh
+
+                if (InputCompat.KeyPressed(Plugin.PriceAdjustKey)) _adjust = !_adjust;
+
+                // right-click an item to pin/unpin (the game doesn't use right-click)
+                if (InputCompat.RightPressed())
+                {
+                    int hk = HeroProbe.HoveredKey;
+                    if (hk != 0) { if (_pinnedKey == hk) _pinnedKey = 0; else Pin(hk); }
+                    else if (_pinnedKey != 0) _pinnedKey = 0;
+                }
+
+                bool capture = _adjust || _pinnedKey != 0;
                 InputCompat.SetPanel(Slot, capture, ScaledRect());
-                if (capture) HandleDrag();
+                if (_adjust) HandleDrag();
                 else if (_dragging) { _dragging = false; InputCompat.ReleaseDrag(Slot); }
             }
             catch { }
+        }
+
+        private void Pin(int k)
+        {
+            _pinnedKey = k;
+            string en = ItemNameStore.GetEn(k), loc = ItemNameStore.Get(k);
+            if (string.IsNullOrEmpty(loc)) loc = en;
+            if (string.IsNullOrEmpty(loc)) loc = "#" + k;
+            _pinnedLocalized = loc;
+            _pinnedSteamName = (HeroProbe.HoveredIsGear && !string.IsNullOrEmpty(HeroProbe.HoveredGrade)) ? $"{en} ({HeroProbe.HoveredGrade}) A" : en;
         }
 
         private void HandleDrag()
@@ -71,8 +97,9 @@ namespace TbhDpsMeter
         void OnGUI()
         {
             if (!Enabled) return;
-            int key = HeroProbe.HoveredKey;
-            if (key == 0 && !_adjust) return;   // hover-only unless in adjust mode
+            bool pinned = _pinnedKey != 0;
+            int key = pinned ? _pinnedKey : HeroProbe.HoveredKey;
+            if (key == 0 && !_adjust) return;   // hover-only unless pinned or in adjust mode
             GUI.depth = -20;
             var prevM = GUI.matrix;
             try
@@ -81,7 +108,8 @@ namespace TbhDpsMeter
                 int fs = Plugin.FontSize.Value; float lh = fs + 6;
 
                 string localized, steamName; PriceStore.Info info = null;
-                if (key != 0)
+                if (pinned) { localized = _pinnedLocalized; steamName = _pinnedSteamName; info = PriceStore.Get(steamName); }
+                else if (key != 0)
                 {
                     localized = ItemNameStore.Get(key);
                     string en = ItemNameStore.GetEn(key);
@@ -93,9 +121,8 @@ namespace TbhDpsMeter
                 else { localized = Loc.G("price_panel"); steamName = ""; }   // adjust-mode placeholder
 
                 bool haveQuote = info != null;
-                int[] hist = info?.Hist;
+                int[] hist = info?.HistC;
                 bool hasChart = hist != null && hist.Length >= 2;
-                const float ChartH = 38f;
                 float h = Pad + lh * 3f + (hasChart ? ChartH + 4f : 0f) + Pad;
                 _scale = UiScale.User;
                 _rect.width = Width; _rect.height = h;
@@ -115,9 +142,10 @@ namespace TbhDpsMeter
                 GUI.matrix = UiScale.Matrix(_rect.x, _rect.y, _scale);
                 GUI.Box(_rect, GUIContent.none, _box);
                 if (_adjust) DrawBorder(_rect, new Color(1f, 0.86f, 0.35f, 0.9f));
+                else if (pinned) DrawBorder(_rect, new Color(0.4f, 0.85f, 0.95f, 0.9f));
 
                 float cy = _rect.y + Pad;
-                GUI.Label(new Rect(ix, cy, iw, lh), localized, _title); cy += lh;
+                GUI.Label(new Rect(ix, cy, iw, lh), (pinned ? "📌 " : "") + localized, _title); cy += lh;
 
                 if (_adjust && key == 0)
                 {
@@ -139,13 +167,12 @@ namespace TbhDpsMeter
                         trend = $"   <color={col}>{arrow}{Math.Abs(pct):0.#}%</color>";
                     }
                     GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#5fd07c>Steam {PriceStore.Format(info.Cents)}</color>{trend}", _label); cy += lh;
-                    // stats line: median sale price · live listings · 24h volume (each only if known)
                     var sb = new System.Text.StringBuilder();
                     if (info.MedianCents >= 0) sb.Append($"中位 {PriceStore.Format(info.MedianCents)}   ");
                     sb.Append($"在售 {info.Qty}");
                     if (info.Vol >= 0) sb.Append($"   24h成交 {info.Vol}");
                     GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#9aa3b0>{sb}</color>", _tiny); cy += lh;
-                    if (hasChart) DrawSparkline(new Rect(ix, cy + 2f, iw, ChartH), hist);
+                    if (hasChart) DrawSparkline(new Rect(ix, cy + 2f, iw, ChartH), hist, info.HistT, info.Cents, pinned);
                 }
                 else
                 {
@@ -157,17 +184,16 @@ namespace TbhDpsMeter
             finally { GUI.matrix = prevM; }
         }
 
-        // mini 7-day price curve. Maps the cents series into the plot rect and draws a polyline, with the
-        // min/max price labelled on the right. Last point dotted to mark "now".
-        private void DrawSparkline(Rect area, int[] cents)
+        // mini 7-day price curve. When interactive (pinned), hovering a point shows its time / price /
+        // change-vs-now. `times` are unix seconds aligned to `cents` (may be null on the old feed format).
+        private void DrawSparkline(Rect area, int[] cents, int[] times, int curCents, bool interactive)
         {
             int n = cents.Length;
             int min = int.MaxValue, max = int.MinValue;
             for (int i = 0; i < n; i++) { if (cents[i] < min) min = cents[i]; if (cents[i] > max) max = cents[i]; }
             float span = Mathf.Max(1, max - min);
-            float plotW = area.width - 44f;   // leave room for the price labels on the right
+            float plotW = area.width - 44f;   // room for the price labels on the right
             float x0 = area.x, y0 = area.y, ph = area.height;
-            // frame
             DrawFill(x0, y0, plotW, ph, new Color(1f, 1f, 1f, 0.04f));
             DrawFill(x0, y0, plotW, 1, new Color(1, 1, 1, 0.10f));
             DrawFill(x0, y0 + ph - 1, plotW, 1, new Color(1, 1, 1, 0.10f));
@@ -183,10 +209,33 @@ namespace TbhDpsMeter
                 prev = new Vector2(px, py);
             }
             DrawFill(prev.x - 2f, prev.y - 2f, 4f, 4f, new Color(0.6f, 0.85f, 1f, 1f));   // "now" dot
-            // min/max labels (right gutter)
             GUI.Label(new Rect(x0 + plotW + 2f, y0 - 3f, 44f, 14f), $"<size=9><color=#9aa3b0>{PriceStore.Format(max)}</color></size>", _tiny);
             GUI.Label(new Rect(x0 + plotW + 2f, y0 + ph - 12f, 44f, 14f), $"<size=9><color=#9aa3b0>{PriceStore.Format(min)}</color></size>", _tiny);
             GUI.Label(new Rect(x0 + 2f, y0 + ph - 11f, 60f, 12f), "<size=9><color=#5a626e>7d</color></size>", _tiny);
+
+            if (!interactive || n < 2) return;
+            // hover a point -> marker + detail (time / price / change vs now)
+            Vector2 m = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
+            if (m.x < x0 - 4f || m.x > x0 + plotW + 4f || m.y < y0 - 4f || m.y > y0 + ph + 4f) return;
+            int idx = Mathf.Clamp(Mathf.RoundToInt((m.x - x0) / Mathf.Max(1e-3f, dx)), 0, n - 1);
+            float mxp = x0 + dx * idx;
+            float myp = y0 + ph - 3f - ((cents[idx] - min) / span) * (ph - 6f);
+            DrawFill(mxp - 0.5f, y0, 1f, ph, new Color(1f, 1f, 1f, 0.25f));   // vertical marker
+            DrawFill(mxp - 3f, myp - 3f, 6f, 6f, new Color(1f, 0.95f, 0.5f, 1f));
+            string when = (times != null && idx < times.Length)
+                ? DateTimeOffset.FromUnixTimeSeconds(times[idx]).LocalDateTime.ToString("MM/dd HH:mm") : $"#{idx + 1}";
+            double dpct = curCents > 0 && cents[idx] > 0 ? (curCents - cents[idx]) * 100.0 / cents[idx] : 0;
+            string dcol = dpct > 0.05 ? "#5fd07c" : dpct < -0.05 ? "#ef6a5a" : "#9aa3b0";
+            string sign = dpct > 0 ? "+" : "";
+            // detail box near the cursor, kept inside the panel
+            float bw = 120f, bh = 44f;
+            float bx = Mathf.Clamp(mxp + 8f, _rect.x + 2f, _rect.x + _rect.width - bw - 2f);
+            float by = Mathf.Clamp(myp - bh - 6f, _rect.y + 2f, _rect.y + _rect.height - bh - 2f);
+            DrawFill(bx, by, bw, bh, new Color(0f, 0f, 0f, 0.95f));
+            DrawFill(bx, by, bw, 1, new Color(1, 1, 1, 0.2f));
+            GUI.Label(new Rect(bx + 5f, by + 1f, bw - 8f, 14f), $"<size=10><color=#cfd6e0>{when}</color></size>", _tiny);
+            GUI.Label(new Rect(bx + 5f, by + 14f, bw - 8f, 14f), $"<size=11><color=#eaf3ee>{PriceStore.Format(cents[idx])}</color></size>", _tiny);
+            GUI.Label(new Rect(bx + 5f, by + 28f, bw - 8f, 14f), $"<size=10><color={dcol}>vs現在 {sign}{dpct:0.#}%</color></size>", _tiny);
         }
 
         private void DrawFill(float x, float y, float w, float h, Color c)
