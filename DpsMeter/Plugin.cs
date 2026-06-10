@@ -95,6 +95,13 @@ namespace TbhDpsMeter
         private static ConfigEntry<string> _lootMapToggleKeyName;
         public static KeyCode LootMapToggleKey = KeyCode.F3;
 
+        // Steam price-peek (shows the hovered item's Steam market price). Toggled from the F1 control center.
+        public static ConfigEntry<bool> PricePeekEnabled;
+        public static ConfigEntry<float> PricePosX;   // price-box position (auto-saved when dragged); -1 = auto (under tooltip)
+        public static ConfigEntry<float> PricePosY;
+        private static ConfigEntry<string> _priceAdjustKeyName;
+        public static KeyCode PriceAdjustKey = KeyCode.F4;   // enters drag/position-adjust mode
+
         public static KeyCode ToggleKey = KeyCode.F9;
         public static KeyCode TakenToggleKey = KeyCode.F10;
         public static KeyCode CompareToggleKey = KeyCode.F11;
@@ -171,6 +178,10 @@ namespace TbhDpsMeter
             LootMapPosY = Config.Bind("LootMapUI", "PosY", -1f, "Loot-heatmap overlay Y. -1 = auto.");
             LootMapPanelWidth = Config.Bind("LootMapUI", "PanelWidth", 560f, "Loot-heatmap overlay width in pixels.");
             LootMapStartVisible = Config.Bind("LootMapUI", "StartVisible", false, "Show the loot-heatmap overlay on launch.");
+            PricePeekEnabled = Config.Bind("Price", "Enabled", true, "Show the hovered item's Steam market price next to the in-game tooltip. Toggle live from the F1 control center.");
+            PricePosX = Config.Bind("Price", "PosX", -1f, "Price-box X (auto-saved when dragged in adjust mode). -1 = auto, under the item tooltip.");
+            PricePosY = Config.Bind("Price", "PosY", -1f, "Price-box Y (auto-saved when dragged in adjust mode). -1 = auto, under the item tooltip.");
+            _priceAdjustKeyName = Config.Bind("Price", "AdjustKey", "F4", "Key to enter the price-box position-adjust (drag) mode (UnityEngine.KeyCode name).");
             _lootMapToggleKeyName = Config.Bind("LootMapUI", "ToggleKey", "F3", "Key to show/hide the loot-heatmap overlay (UnityEngine.KeyCode name).");
 
             if (!Enum.TryParse(_toggleKeyName.Value, true, out ToggleKey))
@@ -189,6 +200,15 @@ namespace TbhDpsMeter
                 BoxOpenToggleKey = KeyCode.F4;
             if (!Enum.TryParse(_lootMapToggleKeyName.Value, true, out LootMapToggleKey))
                 LootMapToggleKey = KeyCode.F3;
+            if (!Enum.TryParse(_priceAdjustKeyName.Value, true, out PriceAdjustKey))
+                PriceAdjustKey = KeyCode.F4;
+            // F4 belongs to the price-box adjust now — if the open-box panel still owns it, bump it to F7
+            // and persist, so pressing F4 doesn't toggle both.
+            if (BoxOpenToggleKey == PriceAdjustKey)
+            {
+                BoxOpenToggleKey = KeyCode.F7;
+                _boxOpenToggleKeyName.Value = "F7";
+            }
 
             Tracker = new DpsTracker(WindowSeconds.Value);
             TakenTracker = new DamageTakenTracker(WindowSeconds.Value);
@@ -215,6 +235,7 @@ namespace TbhDpsMeter
                 ClassInjector.RegisterTypeInIl2Cpp<HubOverlayBehaviour>();
                 ClassInjector.RegisterTypeInIl2Cpp<BoxOpenOverlayBehaviour>();
                 ClassInjector.RegisterTypeInIl2Cpp<LootMapOverlayBehaviour>();
+                ClassInjector.RegisterTypeInIl2Cpp<PricePeekBehaviour>();
                 var go = new GameObject("TbhDpsOverlay");
                 UnityEngine.Object.DontDestroyOnLoad(go);
                 go.hideFlags = HideFlags.HideAndDontSave;
@@ -226,6 +247,7 @@ namespace TbhDpsMeter
                 go.AddComponent<HubOverlayBehaviour>();
                 go.AddComponent<BoxOpenOverlayBehaviour>();
                 go.AddComponent<LootMapOverlayBehaviour>();
+                go.AddComponent<PricePeekBehaviour>();
                 Logger.LogInfo("Overlays created. hub " + HubToggleKey + ", DPS " + ToggleKey + ", taken " + TakenToggleKey + ", compare " + CompareToggleKey + ", farm " + FarmToggleKey + ", box " + BoxToggleKey + ", boxopen " + BoxOpenToggleKey + ", lootmap " + LootMapToggleKey + ".");
             }
             catch (Exception ex)

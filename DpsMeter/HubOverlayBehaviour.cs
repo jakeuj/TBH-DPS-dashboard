@@ -211,7 +211,7 @@ namespace TbhDpsMeter
                     var e = panels[hover];
                     string name, tag;
                     try { name = e.Name(); } catch { name = e.Id ?? "?"; }
-                    try { tag = e.Hotkey.ToString(); } catch { tag = ""; }
+                    try { tag = e.Hotkey == KeyCode.None ? "" : e.Hotkey.ToString(); } catch { tag = ""; }
                     GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#eaf3ee>{name}</color>  <color=#9fb4cc>{tag}</color>", _tip);
                 }
                 else if (panels.Count == 0)

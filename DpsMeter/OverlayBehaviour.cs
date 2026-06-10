@@ -105,6 +105,9 @@ namespace TbhDpsMeter
                 if (Plugin.DebugSnapshot != null && Plugin.DebugSnapshot.Value) GameUiState.Diag();
                 PollStageState();
                 CharacterReader.TickBoxes();   // catch transient box drops before they auto-open
+                if (Plugin.PricePeekEnabled != null && Plugin.PricePeekEnabled.Value)
+                    HeroProbe.PollHoveredItem();  // read the hovered item off the live ItemTooltip for the price box
+                else HeroProbe.HoveredKey = 0;
 
                 InputCompat.Poll();
                 if (InputCompat.TogglePressed()) _visible = !_visible;

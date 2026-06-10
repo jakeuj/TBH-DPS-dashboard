@@ -570,7 +570,102 @@ namespace TbhDpsMeter
         // verified in-game: tf.ipp() / tf.brkr return the localized item name (e.g. 精英弓);
         // iqu() returns the owner class name and the others are keys/garbage, so don't use them.
         private static readonly string[] TfNameGetters = { "ipp", "brkr" };
-        private static bool _itemNameDiagDone;
+
+        /// <summary>The item the native ItemTooltip is currently showing, read by polling the live
+        /// ItemTooltip instances each frame (see <see cref="PollHoveredItem"/>). HoveredKey is its ItemKey
+        /// (0 = nothing hovered). HoveredGrade is the EGradeType name in Title case and HoveredIsGear is
+        /// true for EItemType==GEAR — together they compose the Steam market hash_name "Base (Grade) A".
+        /// HoveredTooltip is the live ItemTooltip Component (used to anchor the price box under it).</summary>
+        public static object HoveredItem; public static int HoveredKey; public static float HoveredAt;
+        public static string HoveredGrade = ""; public static bool HoveredIsGear;
+        public static object HoveredTooltip;
+
+        // Il2CppInterop exposes game data as PROPERTIES, not fields (a wrapper's only C# fields are the
+        // interop internals isWrapped/pooledPtr), and the obfuscated tooltip methods never fire as Harmony
+        // hooks — so we POLL. Reading the single item-typed property (bcnm) on a known-active tooltip is a
+        // managed getter on a live object: safe, unlike a blind static-getter sweep. All obfuscated names
+        // (bcnm/brkc/brkj/brkk/tf/ue+ti) churn on game updates — re-derive via this same metadata approach.
+        private static bool _ttPollInit; private static Type _ttType, _ttItemT;
+        private static System.Reflection.PropertyInfo _bcnm;   // ItemTooltip.bcnm = the shown item (type tf)
+        private static System.Reflection.MethodInfo _findAll;
+
+        public static void PollHoveredItem()
+        {
+            try
+            {
+                if (!_ttPollInit)
+                {
+                    _ttPollInit = true;
+                    var asm = typeof(TaskbarHero.StageManager).Assembly;
+                    foreach (var t in asm.GetTypes()) if (t.Name == "ItemTooltip") { _ttType = t; break; }
+                    var ti = Refl.FindType("ue+ti") ?? Refl.FindType("ue.ti");
+                    if (ti != null) foreach (var m in ti.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
+                        if ((m.Name == "hcb" || m.Name == "isk" || m.Name == "opd") && !m.ReturnType.IsPrimitive && m.ReturnType != typeof(void) && m.ReturnType != typeof(string)) { _ttItemT = m.ReturnType; break; }
+                    if (_ttType != null && _ttItemT != null)
+                        foreach (var p in _ttType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                            if (p.CanRead && p.PropertyType == _ttItemT) { _bcnm = p; if (p.Name == "bcnm") break; }
+                    // Resources.FindObjectsOfTypeAll<ItemTooltip>() catches pooled instances too; it's a generic
+                    // method definition so GetMethod(name,types) won't match it — scan. Fall back to the singular.
+                    System.Reflection.MethodInfo gdef = null;
+                    foreach (var ot in new[] { typeof(UnityEngine.Resources), typeof(UnityEngine.Object) })
+                    {
+                        foreach (var m in ot.GetMethods(BindingFlags.Public | BindingFlags.Static))
+                            if (m.Name == "FindObjectsOfTypeAll" && m.IsGenericMethodDefinition && m.GetParameters().Length == 0) { gdef = m; break; }
+                        if (gdef != null) break;
+                    }
+                    if (gdef == null)
+                        foreach (var m in typeof(UnityEngine.Object).GetMethods(BindingFlags.Public | BindingFlags.Static))
+                            if (m.Name == "FindObjectOfType" && m.IsGenericMethodDefinition && m.GetParameters().Length == 0) { gdef = m; break; }
+                    if (gdef != null && _ttType != null) _findAll = gdef.MakeGenericMethod(_ttType);
+                    Plugin.Logger?.LogInfo($"[price] tooltip poll ready: itemT={(_ttItemT != null ? _ttItemT.Name : "null")} bcnm={(_bcnm != null ? _bcnm.Name : "null")} find={(gdef != null ? gdef.Name : "null")}");
+                }
+                if (_findAll == null || _bcnm == null) return;
+
+                object arr = null;
+                try { arr = _findAll.Invoke(null, null); } catch { }
+                if (arr == null) { HoveredKey = 0; HoveredTooltip = null; return; }
+
+                // pick the first ItemTooltip whose GameObject is visible AND holds an item
+                object chosen = null, chosenInst = null; int chosenKey = 0;
+                foreach (var inst in Refl.Enumerate(arr))
+                {
+                    if (inst == null) continue;
+                    bool active = false; try { active = Convert.ToBoolean(Refl.Get(Refl.Get(inst, "gameObject"), "activeInHierarchy")); } catch { }
+                    if (!active) continue;
+                    object v = null; try { v = _bcnm.GetValue(inst); } catch { }
+                    int k = v != null ? Refl.ToI(Refl.Get(v, "brkc")) : 0;
+                    if (k != 0) { chosen = v; chosenInst = inst; chosenKey = k; break; }
+                }
+                if (chosen == null) { HoveredKey = 0; HoveredTooltip = null; return; }   // nothing hovered -> hide
+                HoveredItem = chosen; HoveredKey = chosenKey; HoveredAt = Time.realtimeSinceStartup; HoveredTooltip = chosenInst;
+                HoveredIsGear = string.Equals(Refl.Str(Refl.Get(chosen, "brkj")), "GEAR", StringComparison.OrdinalIgnoreCase);
+                HoveredGrade = TitleCase(Refl.Str(Refl.Get(chosen, "brkk")));
+            }
+            catch (Exception e) { Plugin.Logger?.LogWarning("[price] poll: " + e.Message); }
+        }
+
+        /// <summary>Screen rect (IMGUI coords: origin top-left, y-down) of the live tooltip showing the
+        /// hovered item, so the price box can be anchored directly under it. False if unavailable — the
+        /// caller then falls back to a fixed position. Assumes a Screen-Space-Overlay canvas (world corners
+        /// == screen pixels); a sanity check rejects off-screen/garbage values.</summary>
+        public static bool TryGetTooltipRect(out Rect guiRect)
+        {
+            guiRect = default;
+            try
+            {
+                var comp = HoveredTooltip; if (comp == null) return false;
+                var rt = Refl.Get(comp, "transform"); if (rt == null) return false;
+                var corners = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector3>(4);
+                Refl.Call(rt, "GetWorldCorners", corners);
+                Vector3 bl = corners[0], tr = corners[2];   // bottom-left, top-right (world == screen px)
+                float w = tr.x - bl.x, h = tr.y - bl.y;
+                if (w <= 1f || h <= 1f || w > Screen.width * 2f || h > Screen.height * 2f) return false;
+                if (tr.x < 0 || bl.x > Screen.width) return false;
+                guiRect = new Rect(bl.x, Screen.height - tr.y, w, h);   // y-up screen -> y-down GUI
+                return true;
+            }
+            catch { return false; }
+        }
 
         public static string ResolveItemName(int itemKey, ulong uid)
         {
@@ -596,6 +691,13 @@ namespace TbhDpsMeter
             if (string.IsNullOrEmpty(s)) return false;
             foreach (var c in s) if (c < '0' || c > '9') return false;
             return true;
+        }
+
+        /// <summary>"LEGENDARY" -> "Legendary". Single-word enum names only (grade words have no underscores).</summary>
+        private static string TitleCase(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            return char.ToUpperInvariant(s[0]) + s.Substring(1).ToLowerInvariant();
         }
 
         /// <summary>Fill the character's stable id (HeroInfoData.HeroKey) and localized display name

@@ -87,7 +87,7 @@ namespace TbhDpsMeter
 
         // Panel rectangles (GUI coords) the hook should treat as solid. One slot per overlay;
         // each overlay re-registers its rect + visibility every frame from Update().
-        private const int MaxPanels = 8;
+        private const int MaxPanels = 9;   // slots 0-7 = overlays; slot 8 = price-box (drag/adjust mode)
         private static readonly Rect[] _panelRect = new Rect[MaxPanels];
         private static readonly bool[] _panelOn = new bool[MaxPanels];
 

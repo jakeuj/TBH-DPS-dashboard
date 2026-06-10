@@ -43,5 +43,15 @@ namespace TbhDpsMeter
             if (!string.IsNullOrEmpty(s)) return s;
             return Json.Str(Json.Get(names, "en-US")) ?? "";   // fall back to English
         }
+
+        /// <summary>English (en-US) name for an item key; "" if unknown. Steam market hash_names are in
+        /// English, so this is what we match against PriceStore.</summary>
+        public static string GetEn(int itemKey)
+        {
+            if (itemKey <= 0) return "";
+            var names = Json.Obj(Json.Get(Map(), itemKey.ToString()));
+            if (names == null) return "";
+            return Json.Str(Json.Get(names, "en-US")) ?? "";
+        }
     }
 }
