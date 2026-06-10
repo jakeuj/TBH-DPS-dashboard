@@ -32,7 +32,10 @@ namespace TbhDpsMeter
         private static readonly Dictionary<string, Info> _items =
             new Dictionary<string, Info>(StringComparer.OrdinalIgnoreCase);
 
-        private const string Url = "https://cdn.jsdelivr.net/gh/WarmBed/TBH-DPS-dashboard@data/prices.json";
+        // raw.githubusercontent refreshes within ~minutes (the cron relies on it too); jsDelivr's branch
+        // cache lags our 30-min updates badly, so it's only the fallback if raw is unreachable.
+        private const string Url = "https://raw.githubusercontent.com/WarmBed/TBH-DPS-dashboard/data/prices.json";
+        private const string UrlFallback = "https://cdn.jsdelivr.net/gh/WarmBed/TBH-DPS-dashboard@data/prices.json";
         private const string Ua = "TBH-DpsMeter-Prices";
 
         /// <summary>Kick off the one-time async fetch. Safe to call every frame.</summary>
@@ -47,7 +50,9 @@ namespace TbhDpsMeter
                     using (var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) })
                     {
                         http.DefaultRequestHeaders.Add("User-Agent", Ua);
-                        string json = await http.GetStringAsync(Url);
+                        string json;
+                        try { json = await http.GetStringAsync(Url); }
+                        catch { json = await http.GetStringAsync(UrlFallback); }   // raw down -> jsDelivr
                         var o = Json.Parse(json);
                         Currency = Json.Str(Json.Get(o, "currency")) ?? "$";
                         CachedAtMs = Json.Long(Json.Get(o, "cachedAt"));
