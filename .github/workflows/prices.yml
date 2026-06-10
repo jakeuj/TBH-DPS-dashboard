@@ -1,0 +1,43 @@
+name: steam-prices
+
+# Fetch TaskBarHero Steam Community Market prices every 30 min and publish prices.json to the
+# `data` branch (kept to a single commit via force-push so the source history stays clean).
+# Served to the plugin via jsDelivr: cdn.jsdelivr.net/gh/WarmBed/TBH-DPS-dashboard@data/prices.json
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: steam-prices
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fetch Steam market prices
+        run: node scripts/fetch-prices.mjs
+      - name: Publish prices.json to the data branch
+        run: |
+          test -s prices.json
+          pub="$RUNNER_TEMP/pub"
+          mkdir -p "$pub" && cp prices.json "$pub/prices.json"
+          cd "$pub"
+          git init -q
+          git checkout -q --orphan data
+          git config user.name "prices-bot"
+          git config user.email "prices-bot@users.noreply.github.com"
+          git add prices.json
+          git commit -q -m "prices $(date -u +%FT%TZ)"
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:data
+      - name: Purge jsDelivr cache
+        run: curl -fsS "https://purge.jsdelivr.net/gh/${{ github.repository }}@data/prices.json" || true
