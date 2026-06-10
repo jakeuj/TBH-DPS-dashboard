@@ -83,15 +83,10 @@ namespace TbhDpsMeter
         // il2cpp property setter param is unnamed; bind positionally with __0.
         static void Postfix(EStageState __0)
         {
-            try
-            {
-                // NOTE: this setter is not actually called by the game (the field is
-                // assigned directly), so OverlayBehaviour.PollStageState drives the
-                // boundaries. Kept for robustness, with matching NONE-only logic.
-                if (__0 == EStageState.NONE)
-                    Plugin.Tracker.StartEncounter(Time.time);
-            }
-            catch { }
+            // NOTE: this setter is not actually called by the game (the field is assigned
+            // directly), so OverlayBehaviour.PollStageState drives the boundaries. With a
+            // single-character party NONE flickers BETWEEN WAVES (not just at round end), so
+            // resetting here would wrongly zero an accumulating run — deliberately a no-op.
         }
     }
 }

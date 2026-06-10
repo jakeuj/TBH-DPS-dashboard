@@ -60,6 +60,13 @@ namespace TbhDpsMeter
         // stage-boundary detection
         private StageManager _stage;
         private int _lastState = -999;
+        // Deferred NONE handling: with a single-character party the game flickers through NONE
+        // BETWEEN WAVES (multi-char uses REORGANIZATION), so NONE alone is not a run boundary.
+        // We mark the NONE time and decide on the next MONSTERSPAWN: back within RoundGapSeconds
+        // and same stage = inter-wave flicker (continue the run); otherwise = real round end.
+        private const float RoundGapSeconds = 2f;
+        private float _noneAt = -1f;
+        private string _runStageId = "";
         private float _nextFindTime;
         private float _nextProbe;
 
@@ -237,40 +244,59 @@ namespace TbhDpsMeter
 
             BoxTracker.Tick(_stage);   // subscribe to OnGetBox on this stage instance (once)
 
+            // pending-NONE timeout: no respawn within the gap window means the round really ended
+            // (back to town / stopped farming) — finalize at the NONE moment, not now.
+            if (_noneAt >= 0f && state == (int)EStageState.NONE && Time.time - _noneAt >= RoundGapSeconds)
+                FinalizeRun(_noneAt);
+
             if (state == _lastState) return;
             _lastState = state;
 
-            // Within a stage the state cycles MONSTERSPAWN->BATTLE->REORGANIZATION per
-            // wave; NONE appears only when a whole stage finishes / the next reloads.
-            // So: accumulate across waves, save + reset only at the NONE boundary.
+            // Within a stage the state cycles MONSTERSPAWN->BATTLE->REORGANIZATION per wave
+            // (multi-character), or MONSTERSPAWN->BATTLE->NONE (single character, NONE flicker).
+            // A run therefore ends only when: NONE lingers past RoundGapSeconds, the next
+            // MONSTERSPAWN arrives after that gap, or the stage id changes.
             var es = (EStageState)state;
             if (es == EStageState.NONE)
             {
-                // close out the wave that was in progress before saving
+                // close out the wave that was in progress, then wait — the next MONSTERSPAWN
+                // (or the timeout above) decides whether this was a wave flicker or a round end.
                 if (_currentWave >= 1 && _waveStartTime >= 0)
                 {
                     float wd = Time.time - _waveStartTime;
                     if (wd > 0.05f) _waveDurations.Add(wd);
+                    _waveStartTime = -1f;
                 }
-                SaveCurrentRun();
-                Plugin.Tracker.StartEncounter(Time.time);
-                Plugin.TakenTracker.StartEncounter(Time.time);
-                _history.Clear();
-                _takenHistory.Clear();
-                _currentWave = 0;
-                Plugin.CurrentWave = 0;
-                _waveDurations.Clear();
-                _waveStartTime = -1f;
-                _activeSec = _idleSec = 0f;
-                _prevDmgTime = -1f;
+                _noneAt = Time.time;
             }
             else if (es == EStageState.MONSTERSPAWN)
             {
+                string stageNow = "";
+                try { stageNow = CharacterReader.CurrentStageId(); } catch { }
+                bool stageChanged = _currentWave >= 1 && !string.IsNullOrEmpty(_runStageId)
+                                    && !string.IsNullOrEmpty(stageNow) && stageNow != _runStageId;
+
+                if (_noneAt >= 0f)
+                {
+                    float gap = Time.time - _noneAt;
+                    _noneAt = -1f;
+                    // long gap or different stage = the previous round really ended at the NONE moment
+                    if (gap >= RoundGapSeconds || stageChanged) FinalizeRun(Time.time - gap);
+                    // else: single-character inter-wave flicker — same run continues
+                }
+                else if (stageChanged)
+                {
+                    // stage switched mid-run without any NONE (jump via UI): close the old run now,
+                    // stamped with the stage it was actually played on
+                    FinalizeRun(Time.time);
+                }
+
                 // first wave of a run: snapshot rewards AND restart timing from the real stage start, so
                 // the clear time excludes town/navigation time between stages (fixes the inflated first
                 // run after switching stages). Subsequent stages re-zero here regardless of the prior NONE.
                 if (_currentWave == 0)
                 {
+                    _runStageId = stageNow;
                     CharacterReader.CaptureRewardBaseline();
                     Plugin.Tracker.StartEncounter(Time.time);
                     Plugin.TakenTracker.StartEncounter(Time.time);
@@ -291,11 +317,30 @@ namespace TbhDpsMeter
             }
         }
 
-        private void SaveCurrentRun()
+        /// <summary>Close out the current run as of <paramref name="endTime"/> (save + reset). The run is
+        /// stamped with the stage id captured at its start, so mid-run stage switches can't mislabel it.</summary>
+        private void FinalizeRun(float endTime)
+        {
+            SaveCurrentRun(endTime);
+            Plugin.Tracker.StartEncounter(Time.time);
+            Plugin.TakenTracker.StartEncounter(Time.time);
+            _history.Clear();
+            _takenHistory.Clear();
+            _currentWave = 0;
+            Plugin.CurrentWave = 0;
+            _waveDurations.Clear();
+            _waveStartTime = -1f;
+            _activeSec = _idleSec = 0f;
+            _prevDmgTime = -1f;
+            _noneAt = -1f;
+            _runStageId = "";
+        }
+
+        private void SaveCurrentRun(float endTime)
         {
             try
             {
-                var s = Plugin.Tracker.GetSnapshot(Time.time);
+                var s = Plugin.Tracker.GetSnapshot(endTime);
                 if (s.Hits <= 0 || s.Total <= 0) return;
                 var r = new RunRecord
                 {
@@ -307,7 +352,7 @@ namespace TbhDpsMeter
                     CritRate = s.CritRate,
                     CritShare = s.CritDamageShare,
                     Waves = _currentWave,
-                    StageId = CharacterReader.CurrentStageId(),
+                    StageId = string.IsNullOrEmpty(_runStageId) ? CharacterReader.CurrentStageId() : _runStageId,
                     ActiveSeconds = _activeSec,
                     IdleSeconds = _idleSec,
                 };
@@ -318,7 +363,7 @@ namespace TbhDpsMeter
                 CharacterReader.FillRewards(r);   // gold/exp/box deltas vs the run baseline
 
                 // fold in the damage-taken (defense) side of the same encounter
-                var ts = Plugin.TakenTracker.GetSnapshot(Time.time);
+                var ts = Plugin.TakenTracker.GetSnapshot(endTime);
                 r.TakenTotal = ts.Total;
                 r.TakenPeak = ts.PeakDtps;
                 r.TakenAvg = ts.AvgDtps;
