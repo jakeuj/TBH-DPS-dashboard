@@ -49,6 +49,9 @@ namespace TbhDpsMeter
         /// <summary>True if any blocking game menu/UI is currently visible. Cached per frame.</summary>
         public static bool MenuOpen()
         {
+            // user can opt out: when disabled, treat the game menu as "not open" so overlays stay
+            // visible (and clickable) even with TAB up. Toggle lives in the F1 control center.
+            if (Plugin.HideOnGameMenu != null && !Plugin.HideOnGameMenu.Value) return false;
             int f = Time.frameCount;
             if (f == _cachedFrame) return _cachedOpen;
             _cachedFrame = f;

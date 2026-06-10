@@ -30,6 +30,7 @@ namespace TbhDpsMeter
 
         private Rect _closeRect;
         private float _scale = 1f;
+        private readonly PanelResize _resize = new PanelResize();
 
         // hover tooltip target (local-space cell rect + text), filled during the grid draw
         private bool _hasTip; private Rect _tipCell; private string _tipText;
@@ -74,6 +75,13 @@ namespace TbhDpsMeter
         {
             if (GameUiState.MenuOpen()) { if (_dragging) { _dragging = false; InputCompat.ReleaseDrag(7); } return; }
             Vector2 m = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
+            // resize grip (bottom-right): width only
+            float rw = _rect.width, dh = 0f;
+            var rr = _resize.Handle(7, m, ref rw, ref dh, 480f, Mathf.Max(480f, Screen.width * 0.95f), 0f, 0f, false);
+            _rect.width = rw;
+            if (rr == PanelResize.Result.Reset) { _rect.width = 560f; Plugin.LootMapPanelWidth.Value = _rect.width; return; }
+            if (rr == PanelResize.Result.Committed) { Plugin.LootMapPanelWidth.Value = _rect.width; return; }
+            if (rr != PanelResize.Result.None) return;
             if (InputCompat.MousePressed())
             {
                 if (_closeRect.Contains(m)) { _visible = false; return; }
@@ -284,6 +292,7 @@ namespace TbhDpsMeter
                     else
                         GUI.Label(new Rect(tx, ty, tw, th), $"<color=#eaf3ee>{_tipText}</color>", _tip);
                 }
+                _resize.DrawGrip(_white, _rect);
             }
             catch { }
             finally { GUI.matrix = prevM; }

@@ -14,7 +14,7 @@ namespace TbhDpsMeter
     {
         public const string Guid = "tbh.dpsmeter";
         public const string Name = "TBH DPS Meter";
-        public const string Version = "0.8.2";
+        public const string Version = "0.8.3";
 
         public static DpsTracker Tracker;
         public static DamageTakenTracker TakenTracker;
@@ -31,6 +31,7 @@ namespace TbhDpsMeter
         public static ConfigEntry<bool> StartVisible;
         public static ConfigEntry<int> FontSize;
         public static ConfigEntry<float> UIScale;
+        public static ConfigEntry<bool> HideOnGameMenu;
         public static ConfigEntry<float> WindowSeconds;
         public static ConfigEntry<bool> DebugDamage;
         public static ConfigEntry<bool> AutoCheckUpdate;
@@ -62,6 +63,7 @@ namespace TbhDpsMeter
         public static ConfigEntry<float> BoxPosX;
         public static ConfigEntry<float> BoxPosY;
         public static ConfigEntry<float> BoxPanelWidth;
+        public static ConfigEntry<float> BoxPanelHeight;
         public static ConfigEntry<bool> BoxStartVisible;
         private static ConfigEntry<string> _boxToggleKeyName;
         public static ConfigEntry<bool> BoxSoundEnabled;
@@ -79,6 +81,7 @@ namespace TbhDpsMeter
         public static ConfigEntry<float> BoxOpenPosX;
         public static ConfigEntry<float> BoxOpenPosY;
         public static ConfigEntry<float> BoxOpenPanelWidth;
+        public static ConfigEntry<float> BoxOpenPanelHeight;
         public static ConfigEntry<bool> BoxOpenStartVisible;
         private static ConfigEntry<string> _boxOpenToggleKeyName;
         public static KeyCode BoxOpenToggleKey = KeyCode.F4;
@@ -111,7 +114,8 @@ namespace TbhDpsMeter
             Opacity = Config.Bind("UI", "Opacity", 0.35f, "Background opacity 0..1 (PageUp/PageDown to adjust live).");
             StartVisible = Config.Bind("UI", "StartVisible", true, "Show the overlay on launch.");
             FontSize = Config.Bind("UI", "FontSize", 15, "Base font size.");
-            UIScale = Config.Bind("UI", "UIScale", 1.0f, "Global overlay scale (0.6–1.5). Panels auto-shrink further if they'd exceed the screen. Adjust live with Ctrl+PageUp/PageDown or the DPS panel's −/+ control.");
+            UIScale = Config.Bind("UI", "UIScale", 1.0f, "Global overlay scale (0.6–1.5). Panels auto-shrink further if they'd exceed the screen. Adjust live with Ctrl+PageUp/PageDown or the F1 control center's −/+ control.");
+            HideOnGameMenu = Config.Bind("UI", "HideOnGameMenu", true, "Hide all overlays while a game menu (TAB) is open. Toggle live from the F1 control center.");
             WindowSeconds = Config.Bind("Meter", "LiveWindowSeconds", 5f, "Sliding window length for the live DPS number.");
             _toggleKeyName = Config.Bind("General", "ToggleKey", "F9", "Key to show/hide the DPS overlay (UnityEngine.KeyCode name).");
             DebugDamage = Config.Bind("Debug", "LogDamageSamples", false, "Log the first damage hits to verify the hook is correct.");
@@ -143,6 +147,7 @@ namespace TbhDpsMeter
             BoxPosX = Config.Bind("BoxUI", "PosX", -1f, "Box-log overlay X (auto-saved when dragged). -1 = auto.");
             BoxPosY = Config.Bind("BoxUI", "PosY", -1f, "Box-log overlay Y (auto-saved when dragged). -1 = auto.");
             BoxPanelWidth = Config.Bind("BoxUI", "PanelWidth", 420f, "Box-log overlay panel width in pixels.");
+            BoxPanelHeight = Config.Bind("BoxUI", "PanelHeight", 180f, "Box-log scrollable list height in pixels (drag the bottom-right grip).");
             BoxStartVisible = Config.Bind("BoxUI", "StartVisible", false, "Show the box-log overlay on launch.");
             _boxToggleKeyName = Config.Bind("BoxUI", "ToggleKey", "F5", "Key to show/hide the box-log overlay (UnityEngine.KeyCode name).");
             BoxSoundEnabled = Config.Bind("BoxUI", "SoundEnabled", true, "Play a sound when a box is picked up.");
@@ -158,6 +163,7 @@ namespace TbhDpsMeter
             BoxOpenPosX = Config.Bind("BoxOpenUI", "PosX", -1f, "Open-box stats overlay X. -1 = auto.");
             BoxOpenPosY = Config.Bind("BoxOpenUI", "PosY", -1f, "Open-box stats overlay Y. -1 = auto.");
             BoxOpenPanelWidth = Config.Bind("BoxOpenUI", "PanelWidth", 460f, "Open-box stats overlay width in pixels.");
+            BoxOpenPanelHeight = Config.Bind("BoxOpenUI", "PanelHeight", 180f, "Open-box log scrollable list height in pixels (drag the bottom-right grip).");
             BoxOpenStartVisible = Config.Bind("BoxOpenUI", "StartVisible", false, "Show the open-box stats overlay on launch.");
             _boxOpenToggleKeyName = Config.Bind("BoxOpenUI", "ToggleKey", "F4", "Key to show/hide the open-box stats overlay (UnityEngine.KeyCode name).");
 

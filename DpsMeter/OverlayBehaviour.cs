@@ -35,8 +35,9 @@ namespace TbhDpsMeter
         private float _wantX, _wantY;   // intended position; clamped non-destructively so window resizes don't move the panel
 
         // clickable regions (set during OnGUI, hit-tested in Update via InputCompat)
-        private Rect _resetRect, _prevRect, _nextRect, _handleRect, _updRect, _scaleDownRect, _scaleUpRect;
+        private Rect _resetRect, _prevRect, _nextRect, _handleRect, _updRect;
         private float _scale = 1f;
+        private readonly PanelResize _resize = new PanelResize();
 
         private Rect ScaledRect() => new Rect(_rect.x, _rect.y, _rect.width * _scale, _rect.height * _scale);
 
@@ -165,11 +166,16 @@ namespace TbhDpsMeter
             // game's own UI can't accidentally grab/drag the (invisible) panel.
             if (GameUiState.MenuOpen()) { if (_dragging) { _dragging = false; InputCompat.ReleaseDrag(0); } return; }
             Vector2 m = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
+            // resize grip (bottom-right): width only
+            float rw = _rect.width, dh = 0f;
+            var rr = _resize.Handle(0, m, ref rw, ref dh, 280f, Mathf.Max(280f, Screen.width * 0.95f), 0f, 0f, false);
+            _rect.width = rw;
+            if (rr == PanelResize.Result.Reset) { _rect.width = 300f; Plugin.PanelWidth.Value = _rect.width; return; }
+            if (rr == PanelResize.Result.Committed) { Plugin.PanelWidth.Value = _rect.width; return; }
+            if (rr != PanelResize.Result.None) return;
 
             if (InputCompat.MousePressed())
             {
-                if (_scaleDownRect.Contains(m)) { UiScale.Adjust(-UiScale.Step); return; }
-                if (_scaleUpRect.Contains(m)) { UiScale.Adjust(UiScale.Step); return; }
                 if (_resetRect.Contains(m)) { ResetMeter(); return; }
                 if (_updRect.Contains(m) && Updater.State == Updater.St.Available) { Updater.DownloadAsync(); return; }
                 if (_prevRect.Contains(m)) { NavOlder(); return; }
@@ -440,14 +446,7 @@ namespace TbhDpsMeter
                 _handleRect = new Rect(x, _rect.y, w - 64, lh + Pad);
                 _resetRect = new Rect(x + w - 56, cy - 1, 50, lh + 2);
                 GUI.Button(_resetRect, Loc.G("reset"), _btn);
-                // UI-scale control, left of Reset (also Ctrl+PageUp/PageDown)
-                _scaleUpRect = new Rect(_resetRect.x - 6 - 18, cy, 18, lh);
-                GUI.Button(_scaleUpRect, "+", _btn);
-                float scaleLblX = _scaleUpRect.x - 50;
-                GUI.Label(new Rect(scaleLblX, cy + 1, 48, lh), $"<size=10><color=#9fb4cc>UI {UiScale.User * 100f:0}%</color></size>", _dim);
-                _scaleDownRect = new Rect(scaleLblX - 18, cy, 18, lh);
-                GUI.Button(_scaleDownRect, "−", _btn);
-                GUI.Label(new Rect(ix, cy, Mathf.Max(40f, _scaleDownRect.x - ix - 4), lh), title, _title);
+                GUI.Label(new Rect(ix, cy, Mathf.Max(40f, _resetRect.x - ix - 4), lh), title, _title);
                 cy += lh;
 
                 // update banner (auto-check). [download] button hit-tested in HandlePointer.
@@ -493,6 +492,7 @@ namespace TbhDpsMeter
 
                 cy += 0;
                 DrawDistribution(ix, cy, iw, barH, parts, total, lh);
+                _resize.DrawGrip(_white, _rect);
             }
             catch { }
             finally { GUI.matrix = prevM; }

@@ -58,6 +58,7 @@ namespace TbhDpsMeter
         private const int WH_MOUSE_LL = 14;
         private const int HC_ACTION = 0;
         private const int WM_LBUTTONDOWN = 0x0201, WM_LBUTTONUP = 0x0202, WM_LBUTTONDBLCLK = 0x0203;
+        private const int WM_MOUSEWHEEL = 0x020A;
 
         private const string UnityWindowClass = "UnityWndClass";
 
@@ -180,6 +181,12 @@ namespace TbhDpsMeter
         private static volatile bool _hookLbDown;
         private static volatile int _hookDownSeq, _hookUpSeq;
 
+        // Mouse wheel sourced from the hook (Unity input is frozen): accumulated notches (WHEEL_DELTA=120
+        // each) + the panel slot the cursor was over. Read & reset on the main thread in Poll().
+        private static volatile int _hookWheelSlot = -1;
+        private static int _hookWheelAccum;
+        private static int _wheel, _wheelSlot = -1;
+
         private static IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
             try
@@ -201,6 +208,16 @@ namespace TbhDpsMeter
                             if (Plugin.DebugDamage != null && Plugin.DebugDamage.Value)
                                 Plugin.Logger?.LogInfo($"[hook] {(msg == WM_LBUTTONUP ? "up" : "down")} gui=({g.x:0},{g.y:0}) slot={slot} swallow={_swallowEnabled}");
                             if (_swallowEnabled) return (IntPtr)1;   // don't forward to the game or desktop
+                        }
+                    }
+                    if (msg == WM_MOUSEWHEEL && GameIsForeground())
+                    {
+                        var wd = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
+                        if (OverAnyPanel(wd.pt.X, wd.pt.Y, out _, out int wslot, out _))
+                        {
+                            _hookWheelSlot = wslot;
+                            System.Threading.Interlocked.Add(ref _hookWheelAccum, (short)((wd.mouseData >> 16) & 0xffff));
+                            if (_swallowEnabled) return (IntPtr)1;   // scroll our panel, not the game
                         }
                     }
                 }
@@ -287,6 +304,9 @@ namespace TbhDpsMeter
                 bool f9 = Key(VK_F9); _f9Edge = f9 && !_f9; _f9 = f9;
                 bool pu = Key(VK_PRIOR); _pgUpEdge = pu && !_pgUp; _pgUp = pu;
                 bool pd = Key(VK_NEXT); _pgDnEdge = pd && !_pgDn; _pgDn = pd;
+
+                _wheel = System.Threading.Interlocked.Exchange(ref _hookWheelAccum, 0);
+                _wheelSlot = _hookWheelSlot;
             }
             catch { }
         }
@@ -364,6 +384,9 @@ namespace TbhDpsMeter
         public static bool MousePressed() => _pressed;
         public static bool MouseHeld() => _down;
         public static bool MouseReleased() => _released;
+        /// <summary>Accumulated mouse-wheel delta this frame (WHEEL_DELTA=120 per notch, + = up) for the
+        /// panel at <paramref name="slot"/>; 0 if the wheel wasn't over that panel.</summary>
+        public static float WheelDelta(int slot) => _wheel != 0 && _wheelSlot == slot ? _wheel : 0f;
         public static bool TogglePressed() => _f9Edge;
         public static bool OpacityUpPressed() => _pgUpEdge;
         public static bool OpacityDownPressed() => _pgDnEdge;

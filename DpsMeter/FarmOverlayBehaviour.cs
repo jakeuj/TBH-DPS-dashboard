@@ -63,6 +63,7 @@ namespace TbhDpsMeter
 
         private Rect _closeRect, _handleRect, _goldHdr, _expHdr, _clearHdr, _pagePrev, _pageNext, _resetRect;
         private float _scale = 1f;
+        private readonly PanelResize _resize = new PanelResize();
         private Rect ScaledRect() => new Rect(_rect.x, _rect.y, _rect.width * _scale, _rect.height * _scale);
         private bool _confirmReset;
         private readonly List<Rect> _chipRects = new List<Rect>();
@@ -133,6 +134,13 @@ namespace TbhDpsMeter
         {
             if (GameUiState.MenuOpen()) { if (_dragging) { _dragging = false; InputCompat.ReleaseDrag(3); } return; }
             Vector2 m = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
+            // resize grip (bottom-right): width only
+            float rw = _rect.width, dh = 0f;
+            var rr = _resize.Handle(3, m, ref rw, ref dh, 420f, Mathf.Max(420f, Screen.width * 0.95f), 0f, 0f, false);
+            _rect.width = rw;
+            if (rr == PanelResize.Result.Reset) { _rect.width = 520f; Plugin.FarmPanelWidth.Value = _rect.width; return; }
+            if (rr == PanelResize.Result.Committed) { Plugin.FarmPanelWidth.Value = _rect.width; return; }
+            if (rr != PanelResize.Result.None) return;
             if (InputCompat.MousePressed())
             {
                 if (_closeRect.Contains(m)) { _visible = false; _confirmReset = false; return; }
@@ -364,6 +372,7 @@ namespace TbhDpsMeter
                 GUI.Button(_pagePrev, "◀", _btn);
                 GUI.Button(_pageNext, "▶", _btn);
                 GUI.Label(new Rect(ix + 64, cy, iw - 64, lh), $"<size=11><color=#9fb4cc>{_page + 1}/{pages}　{filtered.Count} {Loc.G("stage_col")}</color></size>", _dim);
+                _resize.DrawGrip(_white, _rect);
             }
             catch { }
             finally { GUI.matrix = prevM; }

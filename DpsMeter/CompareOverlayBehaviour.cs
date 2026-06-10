@@ -29,6 +29,7 @@ namespace TbhDpsMeter
 
         private Rect _stagePrev, _stageNext, _runPrev, _runNext, _pinRect, _delRect, _closeRect, _handleRect, _resetAllRect;
         private float _scale = 1f;
+        private readonly PanelResize _resize = new PanelResize();
         private Rect ScaledRect() => new Rect(_rect.x, _rect.y, _rect.width * _scale, _rect.height * _scale);
         private bool _confirmReset;
         private readonly List<Rect> _charTabs = new List<Rect>();
@@ -132,6 +133,13 @@ namespace TbhDpsMeter
         {
             if (GameUiState.MenuOpen()) { if (_dragging) { _dragging = false; InputCompat.ReleaseDrag(2); } return; }
             Vector2 m = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
+            // resize grip (bottom-right): width only
+            float rw = _rect.width, dh = 0f;
+            var rr = _resize.Handle(2, m, ref rw, ref dh, 360f, Mathf.Max(360f, Screen.width * 0.95f), 0f, 0f, false);
+            _rect.width = rw;
+            if (rr == PanelResize.Result.Reset) { _rect.width = 380f; Plugin.ComparePanelWidth.Value = _rect.width; return; }
+            if (rr == PanelResize.Result.Committed) { Plugin.ComparePanelWidth.Value = _rect.width; return; }
+            if (rr != PanelResize.Result.None) return;
             if (InputCompat.MousePressed())
             {
                 if (_closeRect.Contains(m)) { _visible = false; _confirmReset = false; return; }
@@ -443,6 +451,7 @@ namespace TbhDpsMeter
                 // RIGHT column: FULL loadout of the selected character, with change markers vs baseline
                 float ry = cy;
                 ry = DrawLoadout(cmp, rightColX, ry, rightColW, lh);
+                _resize.DrawGrip(_white, _rect);
             }
             catch { }
             finally { GUI.matrix = prevM; }

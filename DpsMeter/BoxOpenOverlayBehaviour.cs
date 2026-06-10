@@ -19,9 +19,11 @@ namespace TbhDpsMeter
         private Texture2D _white, _bgTex;
         private GUIStyle _title, _label, _dim, _tiny, _btn, _box, _col, _cell;
         private bool _stylesReady;
-        private Rect _closeRect, _clearRect, _pagePrev, _pageNext;
-        private int _page;
+        private Rect _closeRect, _clearRect;
         private float _scale = 1f;
+        private readonly PanelResize _resize = new PanelResize();
+        private float _scrollY;   // log-list scroll offset (snapped to whole rows)
+        private float _listH;     // resizable log-list viewport height (px), from BoxOpenPanelHeight
 
         // per-grade row colors (index == grade int) — matched to the in-game grade chips
         private static readonly Color[] GradeColors = {
@@ -48,6 +50,7 @@ namespace TbhDpsMeter
         void Awake()
         {
             _rect.width = Mathf.Max(420, Plugin.BoxOpenPanelWidth.Value);
+            _listH = Mathf.Max(60f, Plugin.BoxOpenPanelHeight.Value);
             _visible = Plugin.BoxOpenStartVisible.Value;
             PanelRegistry.Register("boxopen", 5, "◆", () => Loc.G("boxopen_title"), Plugin.BoxOpenToggleKey, () => _visible, v => _visible = v);
         }
@@ -67,7 +70,12 @@ namespace TbhDpsMeter
             {
                 InputCompat.SetPanel(6, _visible && !GameUiState.MenuOpen(), ScaledRect());
                 if (InputCompat.KeyPressed(Plugin.BoxOpenToggleKey)) _visible = !_visible;
-                if (_visible) HandlePointer();
+                if (_visible)
+                {
+                    float wd = InputCompat.WheelDelta(6);
+                    if (wd != 0f) { float lh = Plugin.FontSize.Value + 6; _scrollY -= (wd / 120f) * 3f * lh; }
+                    HandlePointer();
+                }
                 else if (_dragging) _dragging = false;
             }
             catch { }
@@ -77,12 +85,19 @@ namespace TbhDpsMeter
         {
             if (GameUiState.MenuOpen()) { if (_dragging) { _dragging = false; InputCompat.ReleaseDrag(6); } return; }
             Vector2 m = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
+            // resize grip (bottom-right): width + scrollable-log height
+            float glh = Plugin.FontSize.Value + 6;
+            float rw = _rect.width;
+            var rr = _resize.Handle(6, m, ref rw, ref _listH,
+                360f, Mathf.Max(360f, Screen.width * 0.9f), glh * 3f, Screen.height * 0.85f, true);
+            _rect.width = rw;
+            if (rr == PanelResize.Result.Reset) { _rect.width = 460f; _listH = 180f; SaveBoxOpenSize(); return; }
+            if (rr == PanelResize.Result.Committed) { SaveBoxOpenSize(); return; }
+            if (rr != PanelResize.Result.None) return;
             if (InputCompat.MousePressed())
             {
                 if (_closeRect.Contains(m)) { _visible = false; return; }
-                if (_clearRect.Contains(m)) { BoxOpenTracker.ClearAll(); _page = 0; return; }
-                if (_pagePrev.Contains(m)) { _page = Mathf.Max(0, _page - 1); return; }
-                if (_pageNext.Contains(m)) { _page++; return; }
+                if (_clearRect.Contains(m)) { BoxOpenTracker.ClearAll(); _scrollY = 0; return; }
                 if (_rect.Contains(m)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
             }
             if (_dragging)
@@ -128,13 +143,12 @@ namespace TbhDpsMeter
 
                 int gradeRows = 0; for (int g = 0; g < BoxGrade.Count; g++) if (st.GradeTotal(g) > 0) gradeRows++;
 
-                int logRowsPerPage = Mathf.Clamp((int)((Screen.height - 320) / lh), 4, 40);
-                int pages = Mathf.Max(1, (st.Log.Count + logRowsPerPage - 1) / logRowsPerPage);
-                _page = Mathf.Clamp(_page, 0, pages - 1);
-                int shownLog = Mathf.Min(logRowsPerPage, st.Log.Count - _page * logRowsPerPage);
+                int n = st.Log.Count;
+                int visible = Mathf.Max(1, Mathf.FloorToInt(_listH / lh));
+                float listAreaH = visible * lh;
 
                 float h = Pad + lh /*title*/ + lh /*matrix header*/ + lh * Mathf.Max(gradeRows, 1)
-                        + lh * 0.5f + lh /*log header*/ + lh * Mathf.Max(shownLog, 1) + lh /*footer*/ + Pad;
+                        + lh * 0.5f + lh /*log header*/ + listAreaH /*scrollable log*/ + Pad;
                 _rect.height = h;
                 _scale = UiScale.Fit(_rect.width, _rect.height);
                 if (!_dragging) { _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width * _scale)); _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height * _scale)); }
@@ -185,29 +199,40 @@ namespace TbhDpsMeter
                 GUI.Label(new Rect(ix + iw * 0.64f, cy, iw * 0.36f, lh), $"<size=11><color=#9fb4cc>{Loc.G("boxopen_item")}</color></size>", _dim);
                 cy += lh;
 
-                int start = _page * logRowsPerPage;
                 string[] kindShort = { "box_kind_normal", "box_kind_boss", "box_kind_actboss", "box_kind_unknown" };
-                for (int i = 0; i < shownLog; i++)
+                float listTop = cy;
+                int maxFirst = Mathf.Max(0, n - visible);
+                int first = Mathf.Clamp(Mathf.RoundToInt(_scrollY / lh), 0, maxFirst);
+                _scrollY = first * lh;
+                for (int r = 0; r < visible && (first + r) < n; r++)
                 {
-                    var e = st.Log[st.Log.Count - 1 - (start + i)];
-                    if ((i & 1) == 1) DrawRect(ix, cy, iw, lh, new Color(1, 1, 1, 0.03f));
+                    int i = first + r;
+                    float ry = listTop + r * lh;
+                    var e = st.Log[n - 1 - i];
+                    if ((i & 1) == 1) DrawRect(ix, ry, iw, lh, new Color(1, 1, 1, 0.03f));
                     string gc = Hex(e.Grade >= 0 && e.Grade < GradeColors.Length ? GradeColors[e.Grade] : Color.white);
                     int kind = (e.Kind >= 0 && e.Kind < kindShort.Length) ? e.Kind : (int)BoxKind.Unknown;
-                    GUI.Label(new Rect(ix, cy, iw * 0.22f, lh), $"<color=#aeb6c2>{e.Time:HH:mm:ss}</color>", _tiny);
-                    GUI.Label(new Rect(ix + iw * 0.22f, cy, iw * 0.20f, lh), $"<color=#9aa3b0>{Loc.G(kindShort[kind])}</color>", _tiny);
-                    GUI.Label(new Rect(ix + iw * 0.42f, cy, iw * 0.22f, lh), $"<color={gc}>{Loc.G("grade_" + BoxGrade.KeyOf(e.Grade))}</color>", _tiny);
-                    GUI.Label(new Rect(ix + iw * 0.64f, cy, iw * 0.36f, lh), $"<color=#eaf3ee>{ResolveItem(e.Name)}</color>", _tiny);
-                    cy += lh;
+                    GUI.Label(new Rect(ix, ry, iw * 0.22f, lh), $"<color=#aeb6c2>{e.Time:HH:mm:ss}</color>", _tiny);
+                    GUI.Label(new Rect(ix + iw * 0.22f, ry, iw * 0.20f, lh), $"<color=#9aa3b0>{Loc.G(kindShort[kind])}</color>", _tiny);
+                    GUI.Label(new Rect(ix + iw * 0.42f, ry, iw * 0.22f, lh), $"<color={gc}>{Loc.G("grade_" + BoxGrade.KeyOf(e.Grade))}</color>", _tiny);
+                    GUI.Label(new Rect(ix + iw * 0.64f, ry, iw * 0.36f, lh), $"<color=#eaf3ee>{ResolveItem(e.Name)}</color>", _tiny);
                 }
-                if (st.Log.Count == 0) { GUI.Label(new Rect(ix, cy - lh, iw, lh), $"<color=#8a93a0>{Loc.G("box_empty")}</color>", _tiny); }
-
-                _pagePrev = new Rect(ix, cy, 26, lh - 2); _pageNext = new Rect(ix + 30, cy, 26, lh - 2);
-                GUI.Button(_pagePrev, "◀", _btn); GUI.Button(_pageNext, "▶", _btn);
-                GUI.Label(new Rect(ix + 64, cy, iw - 64, lh), $"<size=11><color=#9fb4cc>{_page + 1}/{pages}</color></size>", _dim);
+                if (n == 0) GUI.Label(new Rect(ix, listTop, iw, lh), $"<color=#8a93a0>{Loc.G("box_empty")}</color>", _tiny);
+                if (n > visible)
+                {
+                    float trackX = ix + iw - 3f;
+                    DrawRect(trackX, listTop, 3f, listAreaH, new Color(1, 1, 1, 0.08f));
+                    float thumbH = Mathf.Max(14f, listAreaH * visible / n);
+                    float thumbY = listTop + (listAreaH - thumbH) * (first / (float)maxFirst);
+                    DrawRect(trackX, thumbY, 3f, thumbH, new Color(1, 1, 1, 0.35f));
+                }
+                _resize.DrawGrip(_white, _rect);
             }
             catch { }
             finally { GUI.matrix = prevM; }
         }
+
+        private void SaveBoxOpenSize() { Plugin.BoxOpenPanelWidth.Value = _rect.width; Plugin.BoxOpenPanelHeight.Value = _listH; }
 
         // BoxOpenLog stores a loc key like "ItemName_113003"; resolve the trailing id via the bundled
         // item table (live-localized), falling back to the raw key if unknown.

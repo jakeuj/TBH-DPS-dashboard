@@ -23,9 +23,10 @@ namespace TbhDpsMeter
         private GUIStyle _title, _label, _dim, _tiny, _btn, _box, _tagR, _icon, _tip;
         private bool _stylesReady;
 
-        private Rect _closeRect, _handleRect;
+        private Rect _closeRect, _handleRect, _scaleDownRect, _scaleUpRect, _hideRect;
         private readonly List<Rect> _panelRects = new List<Rect>();
         private float _scale = 1f;
+        private readonly PanelResize _resize = new PanelResize();
 
         private Rect ScaledRect() => new Rect(_rect.x, _rect.y, _rect.width * _scale, _rect.height * _scale);
 
@@ -60,9 +61,19 @@ namespace TbhDpsMeter
         {
             if (GameUiState.MenuOpen()) { if (_dragging) { _dragging = false; InputCompat.ReleaseDrag(5); } return; }
             Vector2 m = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
+            // resize grip (bottom-right): width only
+            float rw = _rect.width, dh = 0f;
+            var rr = _resize.Handle(5, m, ref rw, ref dh, 220f, Mathf.Max(220f, Screen.width * 0.95f), 0f, 0f, false);
+            _rect.width = rw;
+            if (rr == PanelResize.Result.Reset) { _rect.width = 260f; Plugin.HubPanelWidth.Value = _rect.width; return; }
+            if (rr == PanelResize.Result.Committed) { Plugin.HubPanelWidth.Value = _rect.width; return; }
+            if (rr != PanelResize.Result.None) return;
             if (InputCompat.MousePressed())
             {
                 if (_closeRect.Contains(m)) { _visible = false; return; }
+                if (_scaleDownRect.Contains(m)) { UiScale.Adjust(-UiScale.Step); return; }
+                if (_scaleUpRect.Contains(m)) { UiScale.Adjust(UiScale.Step); return; }
+                if (_hideRect.Contains(m)) { Plugin.HideOnGameMenu.Value = !Plugin.HideOnGameMenu.Value; return; }
                 // panel toggle buttons (rebuilt in OnGUI, tested in registry order)
                 var panels = PanelRegistry.Panels;
                 int n = Mathf.Min(_panelRects.Count, panels.Count);
@@ -125,7 +136,7 @@ namespace TbhDpsMeter
                 int nIcons = Mathf.Max(1, panels.Count);
                 float iconSz = Mathf.Min(lh + 10f, Mathf.Floor((iw - (nIcons - 1) * gap) / nIcons));
                 if (iconSz < 12f) iconSz = 12f;
-                float h = Pad + lh /*title*/ + lh /*summary*/ + lh * 0.4f /*separator*/ + iconSz /*icon row*/ + lh /*tooltip*/ + Pad;
+                float h = Pad + lh /*title*/ + lh /*summary*/ + lh * 0.4f /*separator*/ + iconSz /*icon row*/ + lh /*settings*/ + lh /*tooltip*/ + Pad;
                 _rect.height = h;
                 _scale = UiScale.Fit(_rect.width, _rect.height);
                 if (!_dragging) { _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width * _scale)); _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height * _scale)); }
@@ -184,6 +195,16 @@ namespace TbhDpsMeter
                 }
                 cy += iconSz + 4f;
 
+                // settings row: global UI scale (moved here from the DPS panel) + hide-in-menu toggle
+                _scaleDownRect = new Rect(ix, cy, 18, lh); GUI.Button(_scaleDownRect, "−", _btn);
+                GUI.Label(new Rect(ix + 20, cy + 1, 46, lh), $"<size=10><color=#9fb4cc>UI {UiScale.User * 100f:0}%</color></size>", _dim);
+                _scaleUpRect = new Rect(ix + 66, cy, 18, lh); GUI.Button(_scaleUpRect, "+", _btn);
+                bool hideOn = Plugin.HideOnGameMenu.Value;
+                float hideW = Mathf.Max(56f, iw - 92f);
+                _hideRect = new Rect(ix + iw - hideW, cy, hideW, lh);
+                GUI.Button(_hideRect, $"{Loc.G("hide_on_menu")} <color={(hideOn ? "#7fffa0" : "#ff8a8a")}>{(hideOn ? Loc.G("snd_on") : Loc.G("snd_off"))}</color>", _btn);
+                cy += lh;
+
                 // hover tooltip: panel name + hotkey, centered under the hovered icon
                 if (hover >= 0 && hover < panels.Count)
                 {
@@ -195,6 +216,7 @@ namespace TbhDpsMeter
                 }
                 else if (panels.Count == 0)
                     GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#8a93a0>{Loc.G("no_runs")}</color>", _tip);
+                _resize.DrawGrip(_white, _rect);
             }
             catch { }
             finally { GUI.matrix = prevM; }

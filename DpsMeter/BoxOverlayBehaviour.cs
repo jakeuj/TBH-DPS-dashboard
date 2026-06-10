@@ -21,17 +21,20 @@ namespace TbhDpsMeter
         private GUIStyle _title, _label, _dim, _tiny, _btn, _box, _col;
         private bool _stylesReady;
 
-        private Rect _closeRect, _handleRect, _pagePrev, _pageNext, _clearRect, _gearRect, _muteRect;
+        private Rect _closeRect, _handleRect, _clearRect, _gearRect, _muteRect;
         private Rect _soundRect, _volRect, _testRect, _pickRect, _clearSndRect;
         private bool _volDrag, _settingsOpen;
-        private int _page;
         private float _scale = 1f;
+        private readonly PanelResize _resize = new PanelResize();
+        private float _scrollY;   // log-list scroll offset (snapped to whole rows)
+        private float _listH;     // resizable log-list viewport height (px), from BoxPanelHeight
 
         private Rect ScaledRect() => new Rect(_rect.x, _rect.y, _rect.width * _scale, _rect.height * _scale);
 
         void Awake()
         {
             _rect.width = Mathf.Max(380, Plugin.BoxPanelWidth.Value);
+            _listH = Mathf.Max(60f, Plugin.BoxPanelHeight.Value);
             _visible = Plugin.BoxStartVisible.Value;
             PanelRegistry.Register("box", 4, "▣", () => Loc.G("box_title"), Plugin.BoxToggleKey, () => _visible, v => _visible = v);
             try
@@ -64,7 +67,12 @@ namespace TbhDpsMeter
                 }
                 InputCompat.SetPanel(4, _visible && !GameUiState.MenuOpen(), ScaledRect());
                 if (InputCompat.KeyPressed(Plugin.BoxToggleKey)) _visible = !_visible;
-                if (_visible) HandlePointer();
+                if (_visible)
+                {
+                    float wd = InputCompat.WheelDelta(4);
+                    if (wd != 0f) { float lh = Plugin.FontSize.Value + 6; _scrollY -= (wd / 120f) * 3f * lh; }
+                    HandlePointer();
+                }
                 else if (_dragging) _dragging = false;
             }
             catch { }
@@ -74,12 +82,21 @@ namespace TbhDpsMeter
         {
             if (GameUiState.MenuOpen()) { if (_dragging) { _dragging = false; InputCompat.ReleaseDrag(4); } if (_volDrag) _volDrag = false; return; }
             Vector2 m = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
+            // resize grip (bottom-right): width + scrollable-list height
+            float glh = Plugin.FontSize.Value + 6;
+            float rw = _rect.width;
+            var rr = _resize.Handle(4, m, ref rw, ref _listH,
+                320f, Mathf.Max(320f, Screen.width * 0.9f), glh * 3f, Screen.height * 0.85f, true);
+            _rect.width = rw;
+            if (rr == PanelResize.Result.Reset) { _rect.width = 420f; _listH = 180f; SaveBoxSize(); return; }
+            if (rr == PanelResize.Result.Committed) { SaveBoxSize(); return; }
+            if (rr != PanelResize.Result.None) return;
             if (InputCompat.MousePressed())
             {
                 if (_closeRect.Contains(m)) { _visible = false; return; }
                 if (_muteRect.Contains(m)) { Plugin.BoxSoundEnabled.Value = !Plugin.BoxSoundEnabled.Value; return; }
                 if (_gearRect.Contains(m)) { _settingsOpen = !_settingsOpen; return; }
-                if (_clearRect.Contains(m)) { BoxTracker.Events.Clear(); BoxStore.Clear(); BoxTracker.Version++; _page = 0; return; }
+                if (_clearRect.Contains(m)) { BoxTracker.Events.Clear(); BoxStore.Clear(); BoxTracker.Version++; _scrollY = 0; return; }
                 if (_settingsOpen && _soundRect.Contains(m)) { Plugin.BoxSoundEnabled.Value = !Plugin.BoxSoundEnabled.Value; return; }
                 if (_settingsOpen && _testRect.Contains(m)) { BoxSound.Play(); return; }
                 if (_settingsOpen && _pickRect.Contains(m))
@@ -90,8 +107,6 @@ namespace TbhDpsMeter
                 }
                 if (_settingsOpen && _clearSndRect.Contains(m)) { Plugin.BoxSoundFile.Value = ""; BoxSound.ReloadCustom(); return; }
                 if (_settingsOpen && _volRect.Contains(m)) { _volDrag = true; ApplyVolume(m.x); return; }
-                if (_pagePrev.Contains(m)) { _page = Mathf.Max(0, _page - 1); return; }
-                if (_pageNext.Contains(m)) { _page++; return; }
                 if (_rect.Contains(m)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
             }
             if (_volDrag)
@@ -154,13 +169,12 @@ namespace TbhDpsMeter
                 double perHr = hours > 0.0003 ? sessCount / hours : 0;
                 int statRows = Mathf.Min(perStage.Count, 6);
 
-                int rowsPerPage = Mathf.Clamp((int)((Screen.height - 240) / lh), 5, 60);
-                int pages = Mathf.Max(1, (ev.Count + rowsPerPage - 1) / rowsPerPage);
-                _page = Mathf.Clamp(_page, 0, pages - 1);
-                int shown = Mathf.Min(rowsPerPage, ev.Count - _page * rowsPerPage);
+                int n = ev.Count;
+                int visible = Mathf.Max(1, Mathf.FloorToInt(_listH / lh));
+                float listAreaH = visible * lh;
 
                 float h = Pad + lh /*title*/ + lh /*summary*/ + (_settingsOpen ? lh * 2 : 0) /*sound + file rows*/ + (statRows > 0 ? lh * 0.4f + lh * statRows : 0)
-                    + lh /*log header*/ + lh * Mathf.Max(shown, 1) + lh /*footer*/ + Pad;
+                    + lh /*log header*/ + listAreaH /*scrollable list*/ + Pad;
                 _rect.height = h;
                 _scale = UiScale.Fit(_rect.width, _rect.height);
                 if (!_dragging) { _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width * _scale)); _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height * _scale)); }
@@ -242,27 +256,39 @@ namespace TbhDpsMeter
                 GUI.Label(new Rect(ix + iw * 0.54f, cy, iw * 0.46f, lh), $"<size=11><color=#9fb4cc>{Loc.G("boxes")}</color></size>", _dim);
                 cy += lh;
 
-                // log rows (newest first)
-                int start = _page * rowsPerPage;
-                for (int i = 0; i < shown; i++)
+                // log rows (newest first), scrollable within the resizable list viewport
+                float listTop = cy;
+                int maxFirst = Mathf.Max(0, n - visible);
+                int first = Mathf.Clamp(Mathf.RoundToInt(_scrollY / lh), 0, maxFirst);
+                _scrollY = first * lh;
+                for (int r = 0; r < visible && (first + r) < n; r++)
                 {
-                    var e = ev[ev.Count - 1 - (start + i)];
-                    if ((i & 1) == 1) DrawRect(ix, cy, iw, lh, new Color(1, 1, 1, 0.03f));
-                    GUI.Label(new Rect(ix, cy, iw * 0.24f, lh), $"<color=#aeb6c2>{e.Time:HH:mm:ss}</color>", _tiny);
-                    GUI.Label(new Rect(ix + iw * 0.24f, cy, iw * 0.30f, lh), $"<color=#c8a24a>{LocalizeStage(e.Stage)}</color>", _tiny);
+                    int i = first + r;
+                    float ry = listTop + r * lh;
+                    var e = ev[n - 1 - i];
+                    if ((i & 1) == 1) DrawRect(ix, ry, iw, lh, new Color(1, 1, 1, 0.03f));
+                    GUI.Label(new Rect(ix, ry, iw * 0.24f, lh), $"<color=#aeb6c2>{e.Time:HH:mm:ss}</color>", _tiny);
+                    GUI.Label(new Rect(ix + iw * 0.24f, ry, iw * 0.30f, lh), $"<color=#c8a24a>{LocalizeStage(e.Stage)}</color>", _tiny);
                     string nameColor = IsBoss(e.Type) ? "#7FB2FF" : "#eaf3ee";   // boss boxes in blue
-                    GUI.Label(new Rect(ix + iw * 0.54f, cy, iw * 0.46f, lh), $"<color={nameColor}>{e.Type}</color>", _tiny);
-                    cy += lh;
+                    GUI.Label(new Rect(ix + iw * 0.54f, ry, iw * 0.46f, lh), $"<color={nameColor}>{e.Type}</color>", _tiny);
                 }
-                if (ev.Count == 0) { GUI.Label(new Rect(ix, cy - lh, iw, lh), $"<color=#8a93a0>{Loc.G("box_empty")}</color>", _tiny); }
-
-                _pagePrev = new Rect(ix, cy, 26, lh - 2); _pageNext = new Rect(ix + 30, cy, 26, lh - 2);
-                GUI.Button(_pagePrev, "◀", _btn); GUI.Button(_pageNext, "▶", _btn);
-                GUI.Label(new Rect(ix + 64, cy, iw - 64, lh), $"<size=11><color=#9fb4cc>{_page + 1}/{pages}</color></size>", _dim);
+                if (n == 0) GUI.Label(new Rect(ix, listTop, iw, lh), $"<color=#8a93a0>{Loc.G("box_empty")}</color>", _tiny);
+                // scrollbar when more rows than fit
+                if (n > visible)
+                {
+                    float trackX = ix + iw - 3f;
+                    DrawRect(trackX, listTop, 3f, listAreaH, new Color(1, 1, 1, 0.08f));
+                    float thumbH = Mathf.Max(14f, listAreaH * visible / n);
+                    float thumbY = listTop + (listAreaH - thumbH) * (first / (float)maxFirst);
+                    DrawRect(trackX, thumbY, 3f, thumbH, new Color(1, 1, 1, 0.35f));
+                }
+                _resize.DrawGrip(_white, _rect);
             }
             catch { }
             finally { GUI.matrix = prevM; }
         }
+
+        private void SaveBoxSize() { Plugin.BoxPanelWidth.Value = _rect.width; Plugin.BoxPanelHeight.Value = _listH; }
 
         private void ApplyVolume(float mouseX)
         {
