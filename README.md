@@ -3,7 +3,8 @@
 **English** · [日本語](README.ja.md) · [繁體中文](README.zh-Hant.md) · [简体中文](README.zh-Hans.md)
 
 In-game overlay for **TaskBarHero** (TBH: Task Bar Hero) — **DPS · damage-taken · stage-compare ·
-farming-planner · box-log · opened-box stats · loot-heatmap**, all toggled from an **F1 control center**.
+farming-planner · box-log · opened-box stats · loot-heatmap · Steam-market price-peek**, all toggled
+from an **F1 control center**.
 Built as a BepInEx 6 IL2CPP plugin. Tested on game **v1.00.09** (Unity 6 / IL2CPP).
 UI auto-detects **English / 日本語 / 繁體中文 / 简体中文 / Español**.
 
@@ -100,19 +101,41 @@ against *how fast you were clearing*.
 
 <img src="image/heatmap-panel.png" alt="Loot heatmap panel" width="460">
 
+## Price Peek (Steam Market)
+Hover an item — in your **backpack**, a reward popup, anywhere it has a tooltip — and a small box shows its
+**Steam Community Market** price: current price, **24h change** (波動), **median** sale price, **listings**,
+**24h volume**, and a **7-day price curve**. Prices come from a cron-built feed refreshed every ~30 min, so
+no per-player Steam scraping. **Right-click** an item to **pin** the box to it — it stays put while you move
+the cursor onto the curve, where hovering any point shows that point's **time · price · change vs now**.
+Press **F4** to enter position-adjust mode and drag the box where you want it. Toggle it from the F1 control center.
+
+<table>
+<tr>
+<td><img src="image/背包顯示價格.png" alt="Price box on a backpack item" width="300"></td>
+<td><img src="image/價格曲線圖.png" alt="Interactive 7-day price curve" width="260"></td>
+</tr>
+<tr>
+<td align="center"><b>Hover any item</b> for its Steam Market price</td>
+<td align="center"><b>Pin + hover the curve</b> to read each day's price</td>
+</tr>
+</table>
+
 ## Control Center (F1)
 Press **F1** for the **control center** — one compact hub that lists **every** panel as a toggle button
 (lit when shown, dim when hidden), so you can flip DPS, damage-taken, compare, planner, box-log, opened-box
 and loot-heatmap on/off from a single place instead of memorizing every hotkey. A tiny live summary
 (**DPS · session time · boxes opened**) sits at the top. Shown on launch by default; new panels register
-themselves automatically.
+themselves automatically. The bottom rows hold the global settings: **UI scale**, **hide-in-menu**, and two
+independent **font-size** steppers — **大字 (big)** for titles, main numbers and list rows, **小字 (small)**
+for dim hints, axis labels and buttons — applied live across every panel.
 
-<img src="image/hub-panel.png" alt="Control center / hub" width="300">
+<img src="image/中控台2.png" alt="Control center / hub with UI-scale and big/small font controls" width="300">
 
 ## Display scaling
 Panels **auto-shrink** so they never run off the screen on small or low-resolution displays. Set your own
-size with the **− UI % +** control on the DPS panel's title row, or **Ctrl + PageUp / PageDown** — applied
-to every panel and saved as `UI.UIScale`.
+size with the **− UI % +** control in the F1 control center, or **Ctrl + PageUp / PageDown** — applied
+to every panel and saved as `UI.UIScale`. Two separate **font-size** steppers (**大字** / **小字**) sit next
+to it for the text itself, saved as `UI.FontSize` and `UI.FontSizeSmall`.
 
 <img src="image/dps-uiscale.png" alt="DPS panel with the UI scale control" width="300">
 
@@ -123,9 +146,11 @@ to every panel and saved as `UI.UIScale`.
 - **F11** — toggle the stage-compare panel (configurable: `CompareUI.ToggleKey`)
 - **F6** — toggle the farming planner (configurable: `FarmUI.ToggleKey`)
 - **F5** — toggle the box log (configurable: `BoxUI.ToggleKey`)
-- **F4** — toggle the opened-box stats panel (configurable: `BoxOpenUI.ToggleKey`)
+- **F7** — toggle the opened-box stats panel (configurable: `BoxOpenUI.ToggleKey`)
 - **F3** — toggle the loot heatmap (configurable: `LootMapUI.ToggleKey`)
-- **Mouse drag** — move a panel (positions saved independently)
+- **F4** — enter the price-box position-adjust (drag) mode (configurable: `Price.AdjustKey`)
+- **Right-click an item** — pin / unpin the price box to it (then hover the curve to read each day)
+- **Mouse drag** — move a panel (positions saved independently; panels never drag off-screen)
 - **Reset** button (top-right) zeroes the meter; **◀ ▶** browse past-stage records
 - **PageUp / PageDown** — adjust panel opacity; **Ctrl + PageUp / PageDown** — scale all panels
 
