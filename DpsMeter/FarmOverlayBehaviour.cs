@@ -158,10 +158,11 @@ namespace TbhDpsMeter
                 if (_pageNext.Contains(m)) { _page++; return; }
                 for (int i = 0; i < _chipRects.Count; i++)
                     if (_chipRects[i].Contains(m)) { _diff = _chipKeys[i]; _page = 0; return; }
-                if (_rect.Contains(m)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
+                if (_rect.Contains(m) && InputCompat.ClaimDrag(3)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
             }
             if (_dragging)
             {
+                if (!InputCompat.OwnsDrag(3)) { _dragging = false; return; }   // a panel on top stole the press
                 if (InputCompat.MouseHeld()) { _rect.x = m.x - _dragOffset.x; _rect.y = m.y - _dragOffset.y; UiScale.ClampToScreen(ref _rect, _scale); }
                 if (InputCompat.MouseReleased())
                 {

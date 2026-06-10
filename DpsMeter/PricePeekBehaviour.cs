@@ -70,13 +70,16 @@ namespace TbhDpsMeter
         private void HandleDrag()
         {
             Vector2 m = UiScale.ToLocal(InputCompat.MouseGuiPos(), _rect.x, _rect.y, _scale);
-            if (InputCompat.MousePressed() && _rect.Contains(m))
+            // Slot is the highest panel id, so when panels overlap the drag arbitration gives the press to
+            // us (we're drawn on top) and the panel underneath yields — no more dragging two windows at once.
+            if (InputCompat.MousePressed() && _rect.Contains(m) && InputCompat.ClaimDrag(Slot))
             { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
             if (_dragging)
             {
+                if (!InputCompat.OwnsDrag(Slot)) { _dragging = false; return; }   // a panel on top stole the press
                 if (InputCompat.MouseHeld()) { _rect.x = m.x - _dragOffset.x; _rect.y = m.y - _dragOffset.y; UiScale.ClampToScreen(ref _rect, _scale); }
                 if (InputCompat.MouseReleased())
-                { _dragging = false; Plugin.PricePosX.Value = _rect.x; Plugin.PricePosY.Value = _rect.y; }
+                { _dragging = false; Plugin.PricePosX.Value = _rect.x; Plugin.PricePosY.Value = _rect.y; InputCompat.ReleaseDrag(Slot); }
             }
         }
 

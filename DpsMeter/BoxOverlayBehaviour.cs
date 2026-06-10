@@ -107,7 +107,7 @@ namespace TbhDpsMeter
                 }
                 if (_settingsOpen && _clearSndRect.Contains(m)) { Plugin.BoxSoundFile.Value = ""; BoxSound.ReloadCustom(); return; }
                 if (_settingsOpen && _volRect.Contains(m)) { _volDrag = true; ApplyVolume(m.x); return; }
-                if (_rect.Contains(m)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
+                if (_rect.Contains(m) && InputCompat.ClaimDrag(4)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
             }
             if (_volDrag)
             {
@@ -116,6 +116,7 @@ namespace TbhDpsMeter
             }
             if (_dragging)
             {
+                if (!InputCompat.OwnsDrag(4)) { _dragging = false; return; }   // a panel on top stole the press
                 if (InputCompat.MouseHeld()) { _rect.x = m.x - _dragOffset.x; _rect.y = m.y - _dragOffset.y; UiScale.ClampToScreen(ref _rect, _scale); }
                 if (InputCompat.MouseReleased()) { _dragging = false; _wantX = _rect.x; _wantY = _rect.y; Plugin.BoxPosX.Value = _rect.x; Plugin.BoxPosY.Value = _rect.y; }
             }

@@ -98,10 +98,11 @@ namespace TbhDpsMeter
             {
                 if (_closeRect.Contains(m)) { _visible = false; return; }
                 if (_clearRect.Contains(m)) { BoxOpenTracker.ClearAll(); _scrollY = 0; return; }
-                if (_rect.Contains(m)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
+                if (_rect.Contains(m) && InputCompat.ClaimDrag(6)) { _dragging = true; _dragOffset = m - new Vector2(_rect.x, _rect.y); }
             }
             if (_dragging)
             {
+                if (!InputCompat.OwnsDrag(6)) { _dragging = false; return; }   // a panel on top stole the press
                 if (InputCompat.MouseHeld()) { _rect.x = m.x - _dragOffset.x; _rect.y = m.y - _dragOffset.y; UiScale.ClampToScreen(ref _rect, _scale); }
                 if (InputCompat.MouseReleased()) { _dragging = false; _wantX = _rect.x; _wantY = _rect.y; Plugin.BoxOpenPosX.Value = _rect.x; Plugin.BoxOpenPosY.Value = _rect.y; }
             }
