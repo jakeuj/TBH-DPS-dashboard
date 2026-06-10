@@ -22,8 +22,10 @@ namespace TbhDpsMeter
         private Texture2D _white, _bgTex;
         private GUIStyle _title, _label, _dim, _tiny, _btn, _box, _tagR, _icon, _tip;
         private bool _stylesReady;
+        private int _builtFs = -1, _builtFsm = -1;   // font sizes the styles were last built with (live-rebuild on change)
 
         private Rect _closeRect, _handleRect, _scaleDownRect, _scaleUpRect, _hideRect;
+        private Rect _fontBigDownRect, _fontBigUpRect, _fontSmDownRect, _fontSmUpRect;
         private readonly List<Rect> _panelRects = new List<Rect>();
         private float _scale = 1f;
         private readonly PanelResize _resize = new PanelResize();
@@ -73,6 +75,10 @@ namespace TbhDpsMeter
                 if (_closeRect.Contains(m)) { _visible = false; return; }
                 if (_scaleDownRect.Contains(m)) { UiScale.Adjust(-UiScale.Step); return; }
                 if (_scaleUpRect.Contains(m)) { UiScale.Adjust(UiScale.Step); return; }
+                if (_fontBigDownRect.Contains(m)) { Plugin.FontSize.Value = Mathf.Clamp(Plugin.FontSize.Value - 1, 9, 30); return; }
+                if (_fontBigUpRect.Contains(m)) { Plugin.FontSize.Value = Mathf.Clamp(Plugin.FontSize.Value + 1, 9, 30); return; }
+                if (_fontSmDownRect.Contains(m)) { Plugin.FontSizeSmall.Value = Mathf.Clamp(Plugin.FontSizeSmall.Value - 1, 8, 26); return; }
+                if (_fontSmUpRect.Contains(m)) { Plugin.FontSizeSmall.Value = Mathf.Clamp(Plugin.FontSizeSmall.Value + 1, 8, 26); return; }
                 if (_hideRect.Contains(m)) { Plugin.HideOnGameMenu.Value = !Plugin.HideOnGameMenu.Value; return; }
                 // panel toggle buttons (rebuilt in OnGUI, tested in registry order)
                 var panels = PanelRegistry.Panels;
@@ -100,16 +106,17 @@ namespace TbhDpsMeter
         {
             if (_white == null) { _white = new Texture2D(1, 1); _white.SetPixel(0, 0, Color.white); _white.Apply(); }
             if (_bgTex == null) { _bgTex = new Texture2D(1, 1); _bgTex.SetPixel(0, 0, new Color(0f, 0f, 0f, 1f)); _bgTex.Apply(); if (_box != null) _box.normal.background = _bgTex; }
-            if (_stylesReady) return;
-            int fs = Plugin.FontSize.Value;
+            int fs = Plugin.FontSize.Value, fsm = Plugin.FontSizeSmall.Value;
+            if (_stylesReady && _builtFs == fs && _builtFsm == fsm) return;
+            _builtFs = fs; _builtFsm = fsm;
             _title = new GUIStyle { fontSize = fs, fontStyle = FontStyle.Bold, richText = true }; _title.normal.textColor = new Color(1f, 0.86f, 0.35f);
             _label = new GUIStyle { fontSize = fs, richText = true }; _label.normal.textColor = new Color(0.93f, 0.93f, 0.93f);
-            _dim = new GUIStyle { fontSize = fs - 2, richText = true }; _dim.normal.textColor = new Color(0.78f, 0.84f, 0.95f);
-            _tiny = new GUIStyle { fontSize = Mathf.Max(9, fs - 4), richText = true }; _tiny.normal.textColor = new Color(0.7f, 0.75f, 0.85f);
-            _tagR = new GUIStyle { fontSize = Mathf.Max(9, fs - 4), richText = true, alignment = TextAnchor.MiddleRight }; _tagR.normal.textColor = new Color(0.7f, 0.75f, 0.85f);
-            _btn = new GUIStyle(GUI.skin.button) { fontSize = fs - 2, fontStyle = FontStyle.Bold, richText = true };
+            _dim = new GUIStyle { fontSize = fsm, richText = true }; _dim.normal.textColor = new Color(0.78f, 0.84f, 0.95f);
+            _tiny = new GUIStyle { fontSize = Mathf.Max(9, fsm - 2), richText = true }; _tiny.normal.textColor = new Color(0.7f, 0.75f, 0.85f);
+            _tagR = new GUIStyle { fontSize = Mathf.Max(9, fsm - 2), richText = true, alignment = TextAnchor.MiddleRight }; _tagR.normal.textColor = new Color(0.7f, 0.75f, 0.85f);
+            _btn = new GUIStyle(GUI.skin.button) { fontSize = fsm, fontStyle = FontStyle.Bold, richText = true };
             _icon = new GUIStyle { fontSize = fs + 3, richText = true, alignment = TextAnchor.MiddleCenter }; _icon.normal.textColor = Color.white;
-            _tip = new GUIStyle { fontSize = fs - 2, richText = true, alignment = TextAnchor.MiddleCenter }; _tip.normal.textColor = new Color(0.95f, 0.95f, 0.95f);
+            _tip = new GUIStyle { fontSize = fsm, richText = true, alignment = TextAnchor.MiddleCenter }; _tip.normal.textColor = new Color(0.95f, 0.95f, 0.95f);
             _box = new GUIStyle(); _box.normal.background = _bgTex;
             _stylesReady = true;
         }
@@ -136,7 +143,7 @@ namespace TbhDpsMeter
                 int nIcons = Mathf.Max(1, panels.Count);
                 float iconSz = Mathf.Min(lh + 10f, Mathf.Floor((iw - (nIcons - 1) * gap) / nIcons));
                 if (iconSz < 12f) iconSz = 12f;
-                float h = Pad + lh /*title*/ + lh /*summary*/ + lh * 0.4f /*separator*/ + iconSz /*icon row*/ + lh /*settings*/ + lh /*tooltip*/ + Pad;
+                float h = Pad + lh /*title*/ + lh /*summary*/ + lh * 0.4f /*separator*/ + iconSz /*icon row*/ + lh /*settings*/ + lh /*font row*/ + lh /*tooltip*/ + Pad;
                 _rect.height = h;
                 _scale = UiScale.Fit(_rect.width, _rect.height);
                 if (!_dragging) { _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width * _scale)); _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height * _scale)); }
@@ -203,6 +210,18 @@ namespace TbhDpsMeter
                 float hideW = Mathf.Max(56f, iw - 92f);
                 _hideRect = new Rect(ix + iw - hideW, cy, hideW, lh);
                 GUI.Button(_hideRect, $"{Loc.G("hide_on_menu")} <color={(hideOn ? "#7fffa0" : "#ff8a8a")}>{(hideOn ? Loc.G("snd_on") : Loc.G("snd_off"))}</color>", _btn);
+                cy += lh;
+
+                // font row: 大字 (primary) + 小字 (detail) sizes, each with a −/+ stepper (live-applied)
+                float fx = ix;
+                GUI.Label(new Rect(fx, cy + 1, 34, lh), $"<size=10><color=#9fb4cc>{Loc.G("font_big")}</color></size>", _dim); fx += 34;
+                _fontBigDownRect = new Rect(fx, cy, 18, lh); GUI.Button(_fontBigDownRect, "−", _btn); fx += 20;
+                GUI.Label(new Rect(fx, cy + 1, 20, lh), $"<size=10><color=#eaf3ee>{Plugin.FontSize.Value}</color></size>", _dim); fx += 20;
+                _fontBigUpRect = new Rect(fx, cy, 18, lh); GUI.Button(_fontBigUpRect, "+", _btn); fx += 28;
+                GUI.Label(new Rect(fx, cy + 1, 34, lh), $"<size=10><color=#9fb4cc>{Loc.G("font_small")}</color></size>", _dim); fx += 34;
+                _fontSmDownRect = new Rect(fx, cy, 18, lh); GUI.Button(_fontSmDownRect, "−", _btn); fx += 20;
+                GUI.Label(new Rect(fx, cy + 1, 20, lh), $"<size=10><color=#eaf3ee>{Plugin.FontSizeSmall.Value}</color></size>", _dim); fx += 20;
+                _fontSmUpRect = new Rect(fx, cy, 18, lh); GUI.Button(_fontSmUpRect, "+", _btn);
                 cy += lh;
 
                 // hover tooltip: panel name + hotkey, centered under the hovered icon

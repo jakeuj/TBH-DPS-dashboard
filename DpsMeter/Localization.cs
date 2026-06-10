@@ -114,6 +114,8 @@ namespace TbhDpsMeter
             { "dps_title",      new[] { "TBH DPS", "TBH DPS", "TBH DPS", "TBH DPS", "TBH DPS" } },
             { "hub_title",      new[] { "中控台", "Control Center", "コントロール", "中控台", "Centro" } },
             { "hide_on_menu",   new[] { "選單隱藏", "Hide in menu", "メニュー時隠す", "选单隐藏", "Ocultar" } },
+            { "font_big",       new[] { "大字", "Big", "大", "大字", "Grande" } },
+            { "font_small",     new[] { "小字", "Small", "小", "小字", "Pequeño" } },
             { "lootmap_title",  new[] { "掉寶熱力圖", "Loot Heatmap", "ドロップ分布", "掉宝热力图", "Mapa de botín" } },
             { "metric_opens",   new[] { "開箱率", "Opens", "開封数", "开箱率", "Aperturas" } },
             { "metric_pickup",  new[] { "寶箱獲取", "Box Pickups", "宝箱取得", "宝箱获取", "Cajas" } },

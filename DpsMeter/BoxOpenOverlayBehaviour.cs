@@ -19,6 +19,7 @@ namespace TbhDpsMeter
         private Texture2D _white, _bgTex;
         private GUIStyle _title, _label, _dim, _tiny, _btn, _box, _col, _cell;
         private bool _stylesReady;
+        private int _builtFs = -1, _builtFsm = -1;   // font sizes the styles were last built with (live-rebuild on change)
         private Rect _closeRect, _clearRect;
         private float _scale = 1f;
         private readonly PanelResize _resize = new PanelResize();
@@ -112,15 +113,16 @@ namespace TbhDpsMeter
         {
             if (_white == null) { _white = new Texture2D(1, 1); _white.SetPixel(0, 0, Color.white); _white.Apply(); }
             if (_bgTex == null) { _bgTex = new Texture2D(1, 1); _bgTex.SetPixel(0, 0, new Color(0f, 0f, 0f, 1f)); _bgTex.Apply(); if (_box != null) _box.normal.background = _bgTex; }
-            if (_stylesReady) return;
-            int fs = Plugin.FontSize.Value;
+            int fs = Plugin.FontSize.Value, fsm = Plugin.FontSizeSmall.Value;
+            if (_stylesReady && _builtFs == fs && _builtFsm == fsm) return;
+            _builtFs = fs; _builtFsm = fsm;
             _title = new GUIStyle { fontSize = fs, fontStyle = FontStyle.Bold, richText = true }; _title.normal.textColor = new Color(1f, 0.86f, 0.35f);
             _label = new GUIStyle { fontSize = fs, richText = true }; _label.normal.textColor = new Color(0.93f, 0.93f, 0.93f);
-            _dim = new GUIStyle { fontSize = fs - 2, richText = true }; _dim.normal.textColor = new Color(0.78f, 0.84f, 0.95f);
-            _tiny = new GUIStyle { fontSize = Mathf.Max(9, fs - 4), richText = true }; _tiny.normal.textColor = new Color(0.7f, 0.75f, 0.85f);
+            _dim = new GUIStyle { fontSize = fsm, richText = true }; _dim.normal.textColor = new Color(0.78f, 0.84f, 0.95f);
+            _tiny = new GUIStyle { fontSize = Mathf.Max(9, fsm - 2), richText = true }; _tiny.normal.textColor = new Color(0.7f, 0.75f, 0.85f);
             _col = new GUIStyle { fontSize = fs, richText = true, alignment = TextAnchor.MiddleRight }; _col.normal.textColor = Color.white;
-            _cell = new GUIStyle { fontSize = Mathf.Max(9, fs - 3), richText = true, alignment = TextAnchor.MiddleRight }; _cell.normal.textColor = Color.white;
-            _btn = new GUIStyle(GUI.skin.button) { fontSize = fs - 2, fontStyle = FontStyle.Bold, richText = true };
+            _cell = new GUIStyle { fontSize = Mathf.Max(9, fsm - 1), richText = true, alignment = TextAnchor.MiddleRight }; _cell.normal.textColor = Color.white;
+            _btn = new GUIStyle(GUI.skin.button) { fontSize = fsm, fontStyle = FontStyle.Bold, richText = true };
             _box = new GUIStyle(); _box.normal.background = _bgTex;
             _stylesReady = true;
         }

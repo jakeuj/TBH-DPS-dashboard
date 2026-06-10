@@ -45,6 +45,7 @@ namespace TbhDpsMeter
         private float _bgAlphaBaked = -1f;
         private GUIStyle _title, _big, _label, _dim, _tiny, _btn, _box;
         private bool _stylesReady;
+        private int _builtFs = -1, _builtFsm = -1;   // font sizes the styles were last built with (live-rebuild on change)
 
         private readonly List<Sample> _history = new List<Sample>(GraphCapacity + 4);
         private readonly List<Sample> _takenHistory = new List<Sample>(GraphCapacity + 4);   // defense-side curve, saved with the run for review
@@ -399,19 +400,20 @@ namespace TbhDpsMeter
                 _bgAlphaBaked = _opacity;
                 if (_box != null) _box.normal.background = _bgTex;
             }
-            if (_stylesReady) return;
-            int fs = Plugin.FontSize.Value;
+            int fs = Plugin.FontSize.Value, fsm = Plugin.FontSizeSmall.Value;
+            if (_stylesReady && _builtFs == fs && _builtFsm == fsm) return;
+            _builtFs = fs; _builtFsm = fsm;
             _title = new GUIStyle { fontSize = fs, fontStyle = FontStyle.Bold, richText = true };
             _title.normal.textColor = new Color(1f, 0.86f, 0.35f);
             _big = new GUIStyle { fontSize = fs + 9, fontStyle = FontStyle.Bold };
             _big.normal.textColor = Color.white;
             _label = new GUIStyle { fontSize = fs };
             _label.normal.textColor = new Color(0.93f, 0.93f, 0.93f);
-            _dim = new GUIStyle { fontSize = fs - 1 };
+            _dim = new GUIStyle { fontSize = fsm };
             _dim.normal.textColor = new Color(0.78f, 0.84f, 0.95f);
-            _tiny = new GUIStyle { fontSize = Mathf.Max(9, fs - 4) };
+            _tiny = new GUIStyle { fontSize = Mathf.Max(9, fsm - 2) };
             _tiny.normal.textColor = new Color(0.7f, 0.75f, 0.85f);
-            _btn = new GUIStyle(GUI.skin.button) { fontSize = fs - 2, fontStyle = FontStyle.Bold };
+            _btn = new GUIStyle(GUI.skin.button) { fontSize = fsm, fontStyle = FontStyle.Bold };
             _box = new GUIStyle();
             _box.normal.background = _bgTex;
             _stylesReady = true;
