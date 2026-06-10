@@ -172,6 +172,8 @@ namespace TbhDpsMeter
                         _hookHandle = SetWindowsHookEx(WH_MOUSE_LL, _hookProc, GetModuleHandle(null), 0);
                         _hookInstalled = _hookHandle != IntPtr.Zero;
                         if (_hookInstalled) _hookLbDown = false;   // forget any stale press from before
+                        if (_hookLoggedOnce && _hookInstalled && Plugin.DebugDamage != null && Plugin.DebugDamage.Value)
+                            Plugin.Logger?.LogInfo("[hook] reinstalled (game foreground)");
                         if (!_hookLoggedOnce)
                         {
                             _hookLoggedOnce = true;
@@ -185,6 +187,8 @@ namespace TbhDpsMeter
                         UnhookWindowsHookEx(_hookHandle);
                         _hookHandle = IntPtr.Zero;
                         _hookInstalled = false;
+                        if (Plugin.DebugDamage != null && Plugin.DebugDamage.Value)
+                            Plugin.Logger?.LogInfo("[hook] removed (game left foreground)");
                     }
                     else { TranslateMessage(ref msg); DispatchMessage(ref msg); }
                 }
