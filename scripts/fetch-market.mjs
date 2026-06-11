@@ -31,12 +31,50 @@ const now = Date.now();
 const prices = JSON.parse(await readFile('prices.json', 'utf8'));
 const items = prices.items || {};
 
+// Official localized item names from the plugin's embedded wiki data (DpsMeter/item_names.json, keyed by
+// en-US == the Steam hash) + the grade map (Localization.cs). Materials match directly; gear hashes
+// "Base (Rarity) A" are composed from the localized base + localized rarity.
+let byEn = {};
+try {
+  const nm = JSON.parse(await readFile(new URL('../DpsMeter/item_names.json', import.meta.url), 'utf8'));
+  for (const k in nm) { const e = nm[k]['en-US']; if (e && !byEn[e]) byEn[e] = nm[k]; }
+  console.log(`item_names: ${Object.keys(byEn).length} en-US names`);
+} catch (e) { console.warn('item_names.json: ' + e.message); }
+const RARITY = {
+  common: { 'zh-Hant': '普通', 'zh-Hans': '普通', ja: 'コモン', es: 'Común' },
+  uncommon: { 'zh-Hant': '罕見', 'zh-Hans': '罕见', ja: 'アンコモン', es: 'Infrecuente' },
+  rare: { 'zh-Hant': '稀有', 'zh-Hans': '稀有', ja: 'レア', es: 'Raro' },
+  legendary: { 'zh-Hant': '傳奇', 'zh-Hans': '传奇', ja: 'レジェンダリー', es: 'Legendario' },
+  immortal: { 'zh-Hant': '不朽', 'zh-Hans': '不朽', ja: 'イモータル', es: 'Inmortal' },
+  arcana: { 'zh-Hant': '至寶', 'zh-Hans': '至宝', ja: '至宝', es: 'Tesoro' },
+  beyond: { 'zh-Hant': '超凡', 'zh-Hans': '超凡', ja: '超凡', es: 'Trascendente' },
+  celestial: { 'zh-Hant': '天界', 'zh-Hans': '天界', ja: 'セレスティアル', es: 'Celestial' },
+  divine: { 'zh-Hant': '神聖', 'zh-Hans': '神圣', ja: 'ディヴァイン', es: 'Divino' },
+  cosmic: { 'zh-Hant': '宇宙', 'zh-Hans': '宇宙', ja: 'コズミック', es: 'Cósmico' },
+};
+function localized(hash) {
+  const d = byEn[hash];
+  if (d) return { 'zh-Hant': d['zh-Hant'], 'zh-Hans': d['zh-Hans'], ja: d['ja-JP'], es: d['es-ES'] };
+  const m = /^(.+) \(([^)]+)\) (\S+)$/.exec(hash);
+  if (m) {
+    const base = byEn[m[1]], rar = RARITY[m[2].toLowerCase()], suf = m[3];
+    if (base && rar) return {
+      'zh-Hant': base['zh-Hant'] + ' (' + rar['zh-Hant'] + ') ' + suf,
+      'zh-Hans': base['zh-Hans'] + ' (' + rar['zh-Hans'] + ') ' + suf,
+      ja: base['ja-JP'] + ' (' + rar.ja + ') ' + suf,
+      es: base['es-ES'] + ' (' + rar.es + ') ' + suf,
+    };
+  }
+  return null;
+}
+
 // catalog + price/median/vol/listings + spark/chg, all from Steam (USD cents)
 const list = Object.keys(items).map((hash) => {
   const v = items[hash];
   const prev = (v.prevCents != null && v.prevCents > 0) ? v.prevCents : null;
   return {
-    hash, slug: slug(hash), name: v.dispName || hash, color: v.color || null, icon: v.icon || null, type: v.type || null,
+    hash, slug: slug(hash), name: v.dispName || hash, names: localized(hash) || undefined,
+    color: v.color || null, icon: v.icon || null, type: v.type || null,
     price: v.lowestCents || 0, median: (v.medianCents != null ? v.medianCents : 0), listings: v.qty || 0, vol: (v.vol != null ? v.vol : 0),
     chg: prev ? Math.round((v.lowestCents - prev) / prev * 1000) / 10 : null,
     spark: sparkOf(v.hist),
