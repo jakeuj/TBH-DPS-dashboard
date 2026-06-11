@@ -35,7 +35,13 @@ while (start < total && guard++ < 40) {
     const name = r.hash_name || r.name;
     if (!name) continue;
     if (!currency && r.sell_price_text) currency = r.sell_price_text.replace(/[0-9.,\s]/g, ''); // e.g. "$"
-    items[name] = { lowestCents: r.sell_price ?? 0, qty: r.sell_listings ?? 0 };
+    // asset_description carries the display name, rarity color, icon and type — captured so the web
+    // terminal can build its catalog from Steam directly (no tbh-market for anything but the order book).
+    const ad = r.asset_description || {};
+    items[name] = {
+      lowestCents: r.sell_price ?? 0, qty: r.sell_listings ?? 0,
+      dispName: ad.name || name, color: ad.name_color || null, icon: ad.icon_url || null, type: ad.type || null,
+    };
   }
   start += results.length;               // advance by what we actually got, not a fixed page size
   if (start < total) await sleep(2000);  // be gentle to Steam between pages
