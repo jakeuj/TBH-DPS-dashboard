@@ -11,9 +11,14 @@ import { writeFile, mkdir } from 'node:fs/promises';
 
 const REPO = process.env.GITHUB_REPOSITORY || 'WarmBed/TBH-DPS-dashboard';
 const UA = `Mozilla/5.0 (tbh-market-cron; +https://github.com/${REPO})`;
-const ITEMS = 'https://tbh-market.com/api/items';
-const ITEM = 'https://tbh-market.com/api/item/';
-const ORDERBOOK = 'https://tbh-market.com/api/orderbook/';
+// tbh-market 403s datacenter IPs (GitHub Actions), so in CI we go through a Cloudflare Worker proxy
+// (CF egress is not blocked). Set PROXY_BASE + PROXY_KEY in CI; locally on a residential IP, leave
+// them unset to hit tbh-market directly.
+const BASE = (process.env.PROXY_BASE || 'https://tbh-market.com').replace(/\/+$/, '');
+const PROXY_KEY = process.env.PROXY_KEY || '';
+const ITEMS = `${BASE}/api/items`;
+const ITEM = `${BASE}/api/item/`;
+const ORDERBOOK = `${BASE}/api/orderbook/`;
 const PAGE_SIZE = 500;
 const MAX_DETAIL = Number(process.env.MAX_DETAIL || 140);   // detail items considered per run (top-N by volume)
 const DETAIL_SLEEP = Number(process.env.DETAIL_SLEEP || 650);
@@ -21,7 +26,21 @@ const SPARK_N = 24;
 const PREV_MARKET_URL = `https://raw.githubusercontent.com/${REPO}/data/market.json`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function jget(url) { const r = await fetch(url, { headers: { 'User-Agent': UA } }); if (!r.ok) throw new Error(`${r.status} ${url}`); return r.json(); }
+async function jget(url, tries = 3) {
+  const headers = { 'User-Agent': UA };
+  if (PROXY_KEY) headers['x-proxy-key'] = PROXY_KEY;
+  let last;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const r = await fetch(url, { headers });
+      if (r.ok) return r.json();
+      last = new Error(`${r.status} ${url}`);
+      if (r.status >= 400 && r.status < 500 && r.status !== 429) throw last;   // hard client error, don't retry
+    } catch (e) { last = e; }
+    if (i < tries - 1) await sleep(1500 * (i + 1));   // transient (CF cold-start 1042, 5xx, network) — retry
+  }
+  throw last;
+}
 // stable, filesystem-safe id for an item hash (djb2 -> base36); also stored in market.json so the
 // client never has to recompute it.
 function slug(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0; return h.toString(36); }

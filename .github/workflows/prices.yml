@@ -32,6 +32,10 @@ jobs:
         continue-on-error: true
         env:
           MAX_DETAIL: '140'
+          # tbh-market 403s GitHub's datacenter IPs, so route through our Cloudflare Worker proxy
+          # (worker-tbh-proxy/) which CF egress reaches fine. PROXY_KEY gates it (repo secret).
+          PROXY_BASE: 'https://tbh-proxy.mike25326799.workers.dev'
+          PROXY_KEY: ${{ secrets.PROXY_KEY }}
         run: node scripts/fetch-market.mjs
       - name: Publish to the data branch
         env:
