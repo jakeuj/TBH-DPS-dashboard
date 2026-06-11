@@ -98,7 +98,9 @@ for (const [name, v] of Object.entries(items)) {
   }
   if (!series) series = [];
   const lastPt = series[series.length - 1];
-  if (!lastPt || now - lastPt[0] >= SAMPLE_GAP_MS) series.push([now, v.lowestCents]);   // forward point
+  // forward point: [tMs, cents, 24h-volume] — the volume is the last-known (≤6h) priceoverview figure,
+  // so the web terminal can build a volume series (Steam ask-history has no per-trade volume).
+  if (!lastPt || now - lastPt[0] >= SAMPLE_GAP_MS) series.push([now, v.lowestCents, (history.vol.items[name] || {}).vol || 0]);
   history.items[name] = series.filter(p => p[0] >= cutoff);                             // prune window
 }
 
@@ -110,7 +112,7 @@ for (const [name, v] of Object.entries(items)) {
   for (const p of series) { const d = Math.abs(p[0] - (now - DAY)); if (d < rd) { rd = d; ref = p; } }
   if (ref && rd <= 18 * 3600 * 1000) { v.prevCents = ref[1]; v.prevAt = ref[0]; stamped++; }
   const win = series.filter(p => p[0] >= now - HIST_WINDOW_MS);
-  if (win.length) v.hist = win.map(p => [Math.floor(p[0] / 1000), p[1]]);
+  if (win.length) v.hist = win.map(p => [Math.floor(p[0] / 1000), p[1], p[2] || 0]);
 }
 
 // ---- 24h volume + median sale price (priceoverview is per-item & rate-limited, so refresh only every
