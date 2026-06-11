@@ -209,6 +209,8 @@ namespace TbhDpsMeter
             { "price_panel",    new[] { "Steam 報價", "Steam Price", "Steam 価格", "Steam 报价", "Precio Steam" } },
             { "price_drag_hint",new[] { "拖曳移動位置", "Drag to move", "ドラッグで移動", "拖动移动位置", "Arrastra para mover" } },
             { "price_drag_done",new[] { "完成", "to finish", "完了", "完成", "para terminar" } },
+            { "order_book",     new[] { "掛單簿", "Order book", "板情報", "挂单簿", "Libro" } },
+            { "pin_hint",       new[] { "右鍵釘選看掛單", "Right-click to pin + order book", "右クリックで固定", "右键钉选看挂单", "Clic dcho. para fijar" } },
             { "grade_common",   new[] { "普通", "Common", "コモン", "普通", "Común" } },
             { "grade_uncommon", new[] { "罕見", "Uncommon", "アンコモン", "罕见", "Infrecuente" } },
             { "grade_rare",     new[] { "稀有", "Rare", "レア", "稀有", "Raro" } },

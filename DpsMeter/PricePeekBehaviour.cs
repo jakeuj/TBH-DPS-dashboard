@@ -20,7 +20,7 @@ namespace TbhDpsMeter
         private const float ChartH = 40f;
         private Rect _rect = new Rect(0, 0, Width, 0);
         private Texture2D _white, _bgTex;
-        private GUIStyle _title, _label, _dim, _tiny, _box;
+        private GUIStyle _title, _label, _dim, _tiny, _tinyR, _box;
         private bool _stylesReady;
         private int _builtFs = -1, _builtFsm = -1;   // font sizes the styles were last built with (live-rebuild on change)
         private float _scale = 1f;
@@ -95,6 +95,7 @@ namespace TbhDpsMeter
             _label = new GUIStyle { fontSize = fs, richText = true }; _label.normal.textColor = new Color(0.93f, 0.93f, 0.93f);
             _dim = new GUIStyle { fontSize = fsm, richText = true }; _dim.normal.textColor = new Color(0.78f, 0.84f, 0.95f);
             _tiny = new GUIStyle { fontSize = Mathf.Max(9, fsm - 2), richText = true }; _tiny.normal.textColor = new Color(0.62f, 0.68f, 0.78f);
+            _tinyR = new GUIStyle(_tiny) { alignment = TextAnchor.UpperRight };   // right-aligned qty in the order book
             _box = new GUIStyle(); _box.normal.background = _bgTex;
             _stylesReady = true;
         }
@@ -128,7 +129,15 @@ namespace TbhDpsMeter
                 bool haveQuote = info != null;
                 int[] hist = info?.HistC;
                 bool hasChart = hist != null && hist.Length >= 2;
-                float h = Pad + lh * 3f + (hasChart ? ChartH + 4f : 0f) + Pad;
+                // pinned -> the full single-item card: fetch this item's order book (Steam's is login-gated,
+                // so it comes via the pipeline's detail/<slug>.json). Hover stays compact (no order book).
+                DetailStore.OB ob = null;
+                if (pinned && haveQuote) { DetailStore.Request(steamName); ob = DetailStore.Get(steamName); }
+                bool hasOB = ob != null && (ob.Sell.Length > 0 || ob.Buy.Length > 0);
+                int fsm2 = Plugin.FontSizeSmall.Value; float obRowH = fsm2 + 4f;
+                int obRowCount = hasOB ? (1 + Math.Min(5, ob.Sell.Length) + 1 + Math.Min(5, ob.Buy.Length)) : 0;
+                float obH = hasOB ? 4f + obRowCount * obRowH : 0f;
+                float h = Pad + lh * 3f + (hasChart ? ChartH + 4f : 0f) + obH + Pad;
                 _scale = UiScale.User;
                 _rect.width = Width; _rect.height = h;
 
@@ -177,7 +186,8 @@ namespace TbhDpsMeter
                     sb.Append($"在售 {info.Qty}");
                     if (info.Vol >= 0) sb.Append($"   24h成交 {info.Vol}");
                     GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#9aa3b0>{sb}</color>", _tiny); cy += lh;
-                    if (hasChart) DrawSparkline(new Rect(ix, cy + 2f, iw, ChartH), hist, info.HistT, info.Cents, pinned);
+                    if (hasChart) { DrawSparkline(new Rect(ix, cy + 2f, iw, ChartH), hist, info.HistT, info.Cents, pinned); cy += ChartH + 4f; }
+                    if (hasOB) DrawOrderBook(ix, cy, iw, ob, obRowH);
                 }
                 else
                 {
@@ -241,6 +251,27 @@ namespace TbhDpsMeter
             GUI.Label(new Rect(bx + 5f, by + 1f, bw - 8f, 14f), $"<size=10><color=#cfd6e0>{when}</color></size>", _tiny);
             GUI.Label(new Rect(bx + 5f, by + 14f, bw - 8f, 14f), $"<size=11><color=#eaf3ee>{PriceStore.Format(cents[idx])}</color></size>", _tiny);
             GUI.Label(new Rect(bx + 5f, by + 28f, bw - 8f, 14f), $"<size=10><color={dcol}>vs現在 {sign}{dpct:0.#}%</color></size>", _tiny);
+        }
+
+        // 5-level order book: asks (red, highest at top) / spread / bids (green, highest at top), each row a
+        // depth bar proportional to its quantity. Data is from DetailStore (tbh-market via the pipeline).
+        private void DrawOrderBook(float x, float y, float w, DetailStore.OB ob, float rh)
+        {
+            float cy = y;
+            GUI.Label(new Rect(x, cy, w, rh), $"<color=#7a8694>{Loc.G("order_book")}</color>", _tiny); cy += rh;
+            int ns = Mathf.Min(5, ob.Sell.Length);
+            for (int i = ns - 1; i >= 0; i--) { ObRow(x, cy, w, rh, ob.Sell[i], ob.MaxQty, true); cy += rh; }
+            GUI.Label(new Rect(x, cy, w, rh), $"<color=#cfd6e0>{PriceStore.Format(ob.LowSell)}  /  {PriceStore.Format(ob.HighBuy)}</color>", _tiny); cy += rh;
+            int nb = Mathf.Min(5, ob.Buy.Length);
+            for (int i = 0; i < nb; i++) { ObRow(x, cy, w, rh, ob.Buy[i], ob.MaxQty, false); cy += rh; }
+        }
+
+        private void ObRow(float x, float y, float w, float rh, DetailStore.Level lv, int maxQty, bool ask)
+        {
+            float barW = w * Mathf.Clamp01(lv.Qty / (float)Mathf.Max(1, maxQty));
+            DrawFill(x + w - barW, y, barW, rh - 1f, ask ? new Color(0.94f, 0.38f, 0.43f, 0.15f) : new Color(0.15f, 0.82f, 0.49f, 0.15f));
+            GUI.Label(new Rect(x + 2f, y, w - 4f, rh), $"<color={(ask ? "#f0616d" : "#26d07c")}>{PriceStore.Format(lv.Price)}</color>", _tiny);
+            GUI.Label(new Rect(x, y, w - 3f, rh), $"<color=#9aa3b0>{lv.Qty}</color>", _tinyR);
         }
 
         private void DrawFill(float x, float y, float w, float h, Color c)
