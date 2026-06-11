@@ -49,9 +49,13 @@ await mkdir('detail', { recursive: true });
 let done = 0;
 for (const it of byVol) {
   const v = items[it.hash];
+  // hist samples ~every 2h; append the current price so the chart's last point == the header price
+  const h = (v.hist || []).slice();
+  const nowSec = Math.floor(now / 1000);
+  if (!h.length || h[h.length - 1][1] !== v.lowestCents) h.push([nowSec, v.lowestCents]);
   let ob = null;
   try { ob = await jget(ORDERBOOK + encodeURIComponent(it.hash)); } catch (e) { console.warn(`orderbook ${it.hash}: ${e.message}`); }
-  await writeFile(`detail/${it.slug}.json`, JSON.stringify({ hash: it.hash, slug: it.slug, builtAt: now, hist: (v.hist || []), orderbook: ob }));
+  await writeFile(`detail/${it.slug}.json`, JSON.stringify({ hash: it.hash, slug: it.slug, builtAt: now, hist: h, orderbook: ob }));
   if (ob) done++;
   await sleep(OB_SLEEP);
 }
