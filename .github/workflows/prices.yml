@@ -26,21 +26,38 @@ jobs:
           node-version: '22'
       - name: Fetch Steam market prices
         run: node scripts/fetch-prices.mjs
-      - name: Publish prices.json to the data branch
+      # The rich Terminal/F4 dataset (full catalog + top-N detail) from tbh-market. Isolated from the
+      # price-peek path: if it fails, prices.json still publishes below.
+      - name: Fetch tbh-market catalog + detail
+        continue-on-error: true
+        env:
+          MAX_DETAIL: '140'
+        run: node scripts/fetch-market.mjs
+      - name: Publish to the data branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           test -s prices.json
           pub="$RUNNER_TEMP/pub"
-          mkdir -p "$pub" && cp prices.json "$pub/prices.json"
-          # history.json is the cron's rolling working memory (read back each run for the 24h 波動); it's
-          # not served to the plugin but must persist on the data branch across the orphan force-pushes.
+          # Seed from the existing data branch so unchanged detail/* (and history) persist across the
+          # orphan force-push — fetch-market only rewrites the items it refreshed this run.
+          if git clone -q --branch data --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "$pub" 2>/dev/null; then
+            rm -rf "$pub/.git"
+          else
+            mkdir -p "$pub"
+          fi
+          cp prices.json "$pub/prices.json"
+          # history.json is the cron's rolling working memory (read back each run for the 24h 波動).
           test -s history.json && cp history.json "$pub/history.json" || true
+          test -s market.json && cp market.json "$pub/market.json" || true
+          if [ -d detail ]; then mkdir -p "$pub/detail" && cp detail/*.json "$pub/detail/" 2>/dev/null || true; fi
           cd "$pub"
           git init -q
           git checkout -q --orphan data
           git config user.name "prices-bot"
           git config user.email "prices-bot@users.noreply.github.com"
-          git add prices.json history.json 2>/dev/null || git add prices.json
-          git commit -q -m "prices $(date -u +%FT%TZ)"
-          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:data
+          git add -A
+          git commit -q -m "data $(date -u +%FT%TZ)"
+          git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:data
       - name: Purge jsDelivr cache
         run: curl -fsS "https://purge.jsdelivr.net/gh/${{ github.repository }}@data/prices.json" || true
