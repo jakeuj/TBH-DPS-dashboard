@@ -55,7 +55,7 @@ while (start < total && guard++ < 40) {
 const now = Date.now();
 const DAY = 86400000;
 const HISTORY_DAYS = 8;
-const SAMPLE_GAP_MS = 110 * 60 * 1000;     // ~2h spacing for forward points
+const SAMPLE_GAP_MS = 25 * 60 * 1000;      // ~30min spacing (one point per cron run) for intraday timeframes
 const BUCKET_MS = 2 * 3600 * 1000;         // downsample backfilled points to ~2h
 const HIST_WINDOW_MS = 7 * DAY;            // window shipped to the plugin
 const MAX_BACKFILL = 400;                  // per-run cap on tbh-market fetches (one-time courtesy burst)
