@@ -28,6 +28,8 @@ namespace TbhDpsMeter
         private Rect _fontBigDownRect, _fontBigUpRect, _fontSmDownRect, _fontSmUpRect;
         private Rect _borderRect;
         private readonly List<Rect> _swatchRects = new List<Rect>();
+        private Rect _settingsRect;
+        private bool _settingsOpen;   // collapses the 3 settings rows behind the ⚙ button (session-only)
         private readonly List<Rect> _panelRects = new List<Rect>();
         private float _scale = 1f;
         private readonly PanelResize _resize = new PanelResize();
@@ -75,6 +77,9 @@ namespace TbhDpsMeter
             if (InputCompat.MousePressed())
             {
                 if (_closeRect.Contains(m)) { _visible = false; return; }
+                if (_settingsRect.Contains(m)) { _settingsOpen = !_settingsOpen; return; }
+                if (_settingsOpen)
+                {
                 if (_scaleDownRect.Contains(m)) { UiScale.Adjust(-UiScale.Step); return; }
                 if (_scaleUpRect.Contains(m)) { UiScale.Adjust(UiScale.Step); return; }
                 if (_fontBigDownRect.Contains(m)) { Plugin.FontSize.Value = Mathf.Clamp(Plugin.FontSize.Value - 1, 9, 30); return; }
@@ -85,6 +90,7 @@ namespace TbhDpsMeter
                 if (_borderRect.Contains(m)) { Plugin.BorderOn.Value = !Plugin.BorderOn.Value; return; }
                 for (int i = 0; i < _swatchRects.Count && i < PanelBorder.Palette.Length; i++)
                     if (_swatchRects[i].Contains(m)) { Plugin.BorderColor.Value = PanelBorder.Palette[i].Id; Plugin.BorderOn.Value = true; return; }
+                }
                 // panel toggle buttons (rebuilt in OnGUI, tested in registry order)
                 var panels = PanelRegistry.Panels;
                 int n = Mathf.Min(_panelRects.Count, panels.Count);
@@ -148,7 +154,7 @@ namespace TbhDpsMeter
                 int nIcons = Mathf.Max(1, panels.Count);
                 float iconSz = Mathf.Min(lh + 10f, Mathf.Floor((iw - (nIcons - 1) * gap) / nIcons));
                 if (iconSz < 12f) iconSz = 12f;
-                float h = Pad + lh /*title*/ + lh /*summary*/ + lh * 0.4f /*separator*/ + iconSz /*icon row*/ + lh /*settings*/ + lh /*font row*/ + lh /*border row*/ + lh /*tooltip*/ + Pad;
+                float h = Pad + lh /*title*/ + lh /*summary*/ + lh * 0.4f /*separator*/ + iconSz /*icon row*/ + (_settingsOpen ? lh * 3 : 0) /*settings/font/border rows*/ + lh /*tooltip*/ + Pad;
                 _rect.height = h;
                 _scale = UiScale.Fit(_rect.width, _rect.height);
                 if (!_dragging) { _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width * _scale)); _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height * _scale)); }
@@ -159,7 +165,9 @@ namespace TbhDpsMeter
                 float cy = _rect.y + Pad;
                 // title bar (whole row is the drag handle)
                 _handleRect = new Rect(x, _rect.y, w, lh);
-                GUI.Label(new Rect(ix, cy, iw - 26, lh), Loc.G("hub_title"), _title);
+                GUI.Label(new Rect(ix, cy, iw - 50, lh), Loc.G("hub_title"), _title);
+                _settingsRect = new Rect(x + w - 50, cy - 2, 22, lh);
+                GUI.Button(_settingsRect, _settingsOpen ? "<color=#7fffa0>⚙</color>" : "⚙", _btn);
                 _closeRect = new Rect(x + w - 26, cy - 2, 22, lh); GUI.Button(_closeRect, "✕", _btn);
                 cy += lh;
 
@@ -207,6 +215,9 @@ namespace TbhDpsMeter
                 }
                 cy += iconSz + 4f;
 
+                // settings rows (UI scale / fonts / border) live behind the title-bar ⚙ toggle
+                if (_settingsOpen)
+                {
                 // settings row: global UI scale (moved here from the DPS panel) + hide-in-menu toggle
                 _scaleDownRect = new Rect(ix, cy, 18, lh); GUI.Button(_scaleDownRect, "−", _btn);
                 GUI.Label(new Rect(ix + 20, cy + 1, 46, lh), $"<size=10><color=#9fb4cc>UI {UiScale.User * 100f:0}%</color></size>", _dim);
@@ -247,6 +258,7 @@ namespace TbhDpsMeter
                     DrawRect(r.x, r.y, r.width, r.height, pp.C);
                 }
                 cy += lh;
+                }
 
                 // hover tooltip: panel name + hotkey, centered under the hovered icon
                 if (hover >= 0 && hover < panels.Count)
