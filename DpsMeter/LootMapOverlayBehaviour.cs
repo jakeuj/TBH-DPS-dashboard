@@ -16,7 +16,7 @@ namespace TbhDpsMeter
         public LootMapOverlayBehaviour(IntPtr ptr) : base(ptr) { }
 
         private const float Pad = 10f;
-        private const int MaxDayRows = 7;        // two grids → keep compact
+        private const int MaxDayRows = 3;        // two grids → keep compact (most recent 3 days)
         private const float ChartH = 100f;
 
         private Rect _rect = new Rect(24, 120, 560, 0);
@@ -178,6 +178,7 @@ namespace TbhDpsMeter
 
                 // ---- TOP grid source: F5 box pickups (BoxTracker.Events) bucketed by (day, hour) ----
                 var pickupByDay = new Dictionary<string, long[]>();
+                var pickupFirst = new Dictionary<string, DateTime>(); var pickupLast = new Dictionary<string, DateTime>();
                 long totalPickups = 0;
                 try
                 {
@@ -190,12 +191,15 @@ namespace TbhDpsMeter
                         int hh = e.Time.Hour; if (hh < 0) hh = 0; else if (hh > 23) hh = 23;
                         if (!pickupByDay.TryGetValue(day, out var pArr)) { pArr = new long[24]; pickupByDay[day] = pArr; }
                         pArr[hh]++; totalPickups++;
+                        if (!pickupFirst.TryGetValue(day, out var f0) || e.Time < f0) pickupFirst[day] = e.Time;
+                        if (!pickupLast.TryGetValue(day, out var l0) || e.Time > l0) pickupLast[day] = e.Time;
                     }
                 }
                 catch { }
 
                 // ---- BOTTOM grid source: ALL F4 opens (BoxOpenTracker.Stats.Log) by (day, hour) ----
                 var goodByDay = new Dictionary<string, long[]>();
+                var openFirst = new Dictionary<string, DateTime>(); var openLast = new Dictionary<string, DateTime>();
                 var openEvByCell = new Dictionary<string, List<BoxOpenEvent>>();   // "day|hour" -> events
                 long totalOpen = 0;
                 try
@@ -210,6 +214,8 @@ namespace TbhDpsMeter
                         int hh = e.Time.Hour; if (hh < 0) hh = 0; else if (hh > 23) hh = 23;
                         if (!goodByDay.TryGetValue(day, out var gArr)) { gArr = new long[24]; goodByDay[day] = gArr; }
                         gArr[hh]++; totalOpen++;
+                        if (!openFirst.TryGetValue(day, out var f1) || e.Time < f1) openFirst[day] = e.Time;
+                        if (!openLast.TryGetValue(day, out var l1) || e.Time > l1) openLast[day] = e.Time;
                         string ckey = day + "|" + hh;
                         if (!openEvByCell.TryGetValue(ckey, out var lst)) { lst = new List<BoxOpenEvent>(); openEvByCell[ckey] = lst; }
                         lst.Add(e);
@@ -274,9 +280,11 @@ namespace TbhDpsMeter
                     }
                 }
 
-                cy = DrawGrid(ix, cy, iw, lh, cellH, mLocal, days, dayRows, pickupByDay, Loc.G("metric_pickup"), maxPickup, 0, null);
+                var pickupStats = DayStats(days, pickupByDay, pickupFirst, pickupLast);
+                var openStats = DayStats(days, goodByDay, openFirst, openLast);
+                cy = DrawGrid(ix, cy, iw, lh, cellH, mLocal, days, dayRows, pickupByDay, Loc.G("metric_pickup"), maxPickup, 0, null, pickupStats);
                 cy += lh * 0.4f;
-                cy = DrawGrid(ix, cy, iw, lh, cellH, mLocal, days, dayRows, goodByDay, Loc.G("metric_openlog"), maxOpen, 1, openEvByCell);
+                cy = DrawGrid(ix, cy, iw, lh, cellH, mLocal, days, dayRows, goodByDay, Loc.G("metric_openlog"), maxOpen, 1, openEvByCell, openStats);
 
                 // ---- separator + clear-time trend chart ----
                 if (hasChart)
@@ -313,13 +321,42 @@ namespace TbhDpsMeter
             finally { GUI.matrix = prevM; }
         }
 
-        // Draws one labeled heatmap grid (header + day gutter + 24 hour columns + hour-axis ticks).
-        // Returns the y just below the grid. Records a hover tooltip into _hasTip/_tipCell/_tipText.
+        // "N · ⌀gap" per day: total events + average gap between consecutive events (last-first)/(n-1)
+        private static Dictionary<string, string> DayStats(List<string> days, Dictionary<string, long[]> byDay,
+            Dictionary<string, DateTime> first, Dictionary<string, DateTime> last)
+        {
+            var res = new Dictionary<string, string>();
+            foreach (var day in days)
+            {
+                long n = 0;
+                if (byDay.TryGetValue(day, out var arr)) for (int i = 0; i < 24; i++) n += arr[i];
+                string s = n.ToString();
+                if (n >= 2 && first.TryGetValue(day, out var f) && last.TryGetValue(day, out var l))
+                {
+                    double gap = (l - f).TotalSeconds / (n - 1);
+                    if (gap > 0) s += " · ⌀" + FmtGap(gap);
+                }
+                res[day] = s;
+            }
+            return res;
+        }
+
+        private static string FmtGap(double s)
+        {
+            if (s < 90) return ((int)s) + "s";
+            if (s < 5400) return (s / 60.0).ToString("0.#") + "m";
+            return (s / 3600.0).ToString("0.#") + "h";
+        }
+
+        // Draws one labeled heatmap grid (header + day gutter + 24 hour columns + per-day stats column
+        // + hour-axis ticks). Returns the y just below the grid. Records a hover tooltip into _hasTip/….
         private float DrawGrid(float ix, float cy, float iw, float lh, float cellH, Vector2 mLocal,
             List<string> days, int dayRows, Dictionary<string, long[]> data, string header, long maxVisible, int metric,
-            Dictionary<string, List<BoxOpenEvent>> evByCell)
+            Dictionary<string, List<BoxOpenEvent>> evByCell, Dictionary<string, string> dayStats)
         {
-            GUI.Label(new Rect(ix, cy, iw, lh), $"<color=#9fb4cc>{header}</color>", _dim);
+            float statW = Mathf.Max(78f, iw * 0.17f);
+            GUI.Label(new Rect(ix, cy, iw - statW, lh), $"<color=#9fb4cc>{header}</color>", _dim);
+            GUI.Label(new Rect(ix + iw - statW, cy + 2, statW, lh), $"<size=9><color=#7a8390>{Loc.G("day_stats")}</color></size>", _tiny);
             cy += lh;
 
             if (dayRows == 0)
@@ -330,7 +367,7 @@ namespace TbhDpsMeter
 
             float gutterW = Mathf.Max(40f, iw * 0.11f);
             float gridX = ix + gutterW;
-            float gridW = iw - gutterW;
+            float gridW = iw - gutterW - statW;
             float cellW = gridW / 24f;
 
             float gy = cy;
@@ -339,6 +376,8 @@ namespace TbhDpsMeter
                 string day = days[r];
                 string shortDay = day.Length >= 10 ? day.Substring(5) : day;  // MM-DD
                 GUI.Label(new Rect(ix, gy, gutterW - 2, cellH), $"<color=#aeb6c2>{shortDay}</color>", _tiny);
+                if (dayStats != null && dayStats.TryGetValue(day, out var st))
+                    GUI.Label(new Rect(gridX + gridW + 6, gy, statW - 6, cellH), $"<color=#9fb4cc>{st}</color>", _tiny);
                 data.TryGetValue(day, out var arr);
                 for (int hh = 0; hh < 24; hh++)
                 {
