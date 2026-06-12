@@ -286,10 +286,11 @@ namespace TbhDpsMeter
                 // NOTE: incoming (monster) damage carries no EDamageType (always None),
                 // so the type bar is meaningless for the taken panel — only the element
                 // attribute breakdown (Physical/Fire/Cold/...) is shown.
+                float labelH = Mathf.Max(9, Plugin.FontSizeSmall.Value - 2) + 6;   // _tiny line height (don't clip at big fonts)
                 float height = Pad + lh /*header*/ + lh /*nav*/ + (fs + 12) /*big*/
                     + lh + lh + lh /*peak/avg, total/dur, biggest/hits/crit*/
                     + 6 + graphH + 14 /*graph + x labels*/
-                    + 6 + 12 /*attr label*/ + barH + (attrRows > 0 ? lh * attrRows : 0)
+                    + 6 + labelH /*attr label*/ + barH + (attrRows > 0 ? 3 + lh * attrRows : 0)
                     + Pad;
                 _rect.height = height;
                 _scale = UiScale.Fit(_rect.width, _rect.height);
@@ -333,7 +334,7 @@ namespace TbhDpsMeter
 
                 // element attribute distribution (the meaningful breakdown for incoming damage)
                 cy += 6;
-                GUI.Label(new Rect(ix, cy, iw, 12), Loc.G("element_dist"), _tiny); cy += 12;
+                GUI.Label(new Rect(ix, cy, iw, labelH), Loc.G("element_dist"), _tiny); cy += labelH;
                 cy = DrawDistribution(ix, cy, iw, barH, attrParts, total, lh, isAttribute: true);
                 _resize.DrawGrip(_white, _rect);
             }
@@ -399,7 +400,7 @@ namespace TbhDpsMeter
                 if (col >= 2) { col = 0; ly += lh; }
             }
             int rows = Mathf.CeilToInt(Mathf.Min(parts.Count, 6) / 2f);
-            return y + h + (rows > 0 ? lh * rows : 0);
+            return y + h + (rows > 0 ? 3 + lh * rows : 0);   // legend starts at y+h+3
         }
 
         private static Color ColorFor(int key, bool isAttribute)
