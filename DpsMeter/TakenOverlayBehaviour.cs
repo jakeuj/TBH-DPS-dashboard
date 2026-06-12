@@ -300,7 +300,7 @@ namespace TbhDpsMeter
                     _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height * _scale));
                 }
                 GUI.matrix = UiScale.Matrix(_rect.x, _rect.y, _scale);
-                GUI.Box(_rect, GUIContent.none, _box);
+                GUI.Box(_rect, GUIContent.none, _box); PanelBorder.Draw(_rect);
 
                 float cy = _rect.y + Pad;
 

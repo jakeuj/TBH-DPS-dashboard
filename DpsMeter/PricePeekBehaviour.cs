@@ -154,7 +154,7 @@ namespace TbhDpsMeter
 
                 float ix = _rect.x + Pad, iw = _rect.width - Pad * 2;
                 GUI.matrix = UiScale.Matrix(_rect.x, _rect.y, _scale);
-                GUI.Box(_rect, GUIContent.none, _box);
+                GUI.Box(_rect, GUIContent.none, _box); PanelBorder.Draw(_rect);
                 if (_adjust) DrawBorder(_rect, new Color(1f, 0.86f, 0.35f, 0.9f));
                 else if (pinned) DrawBorder(_rect, new Color(0.4f, 0.85f, 0.95f, 0.9f));
 

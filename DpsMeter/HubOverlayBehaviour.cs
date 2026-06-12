@@ -26,6 +26,8 @@ namespace TbhDpsMeter
 
         private Rect _closeRect, _handleRect, _scaleDownRect, _scaleUpRect, _hideRect;
         private Rect _fontBigDownRect, _fontBigUpRect, _fontSmDownRect, _fontSmUpRect;
+        private Rect _borderRect;
+        private readonly List<Rect> _swatchRects = new List<Rect>();
         private readonly List<Rect> _panelRects = new List<Rect>();
         private float _scale = 1f;
         private readonly PanelResize _resize = new PanelResize();
@@ -80,6 +82,9 @@ namespace TbhDpsMeter
                 if (_fontSmDownRect.Contains(m)) { Plugin.FontSizeSmall.Value = Mathf.Clamp(Plugin.FontSizeSmall.Value - 1, 8, 26); return; }
                 if (_fontSmUpRect.Contains(m)) { Plugin.FontSizeSmall.Value = Mathf.Clamp(Plugin.FontSizeSmall.Value + 1, 8, 26); return; }
                 if (_hideRect.Contains(m)) { Plugin.HideOnGameMenu.Value = !Plugin.HideOnGameMenu.Value; return; }
+                if (_borderRect.Contains(m)) { Plugin.BorderOn.Value = !Plugin.BorderOn.Value; return; }
+                for (int i = 0; i < _swatchRects.Count && i < PanelBorder.Palette.Length; i++)
+                    if (_swatchRects[i].Contains(m)) { Plugin.BorderColor.Value = PanelBorder.Palette[i].Id; Plugin.BorderOn.Value = true; return; }
                 // panel toggle buttons (rebuilt in OnGUI, tested in registry order)
                 var panels = PanelRegistry.Panels;
                 int n = Mathf.Min(_panelRects.Count, panels.Count);
@@ -143,13 +148,13 @@ namespace TbhDpsMeter
                 int nIcons = Mathf.Max(1, panels.Count);
                 float iconSz = Mathf.Min(lh + 10f, Mathf.Floor((iw - (nIcons - 1) * gap) / nIcons));
                 if (iconSz < 12f) iconSz = 12f;
-                float h = Pad + lh /*title*/ + lh /*summary*/ + lh * 0.4f /*separator*/ + iconSz /*icon row*/ + lh /*settings*/ + lh /*font row*/ + lh /*tooltip*/ + Pad;
+                float h = Pad + lh /*title*/ + lh /*summary*/ + lh * 0.4f /*separator*/ + iconSz /*icon row*/ + lh /*settings*/ + lh /*font row*/ + lh /*border row*/ + lh /*tooltip*/ + Pad;
                 _rect.height = h;
                 _scale = UiScale.Fit(_rect.width, _rect.height);
                 if (!_dragging) { _rect.x = Mathf.Clamp(_wantX, 0f, Mathf.Max(0f, Screen.width - _rect.width * _scale)); _rect.y = Mathf.Clamp(_wantY, 0f, Mathf.Max(0f, Screen.height - _rect.height * _scale)); }
                 x = _rect.x; ix = x + Pad;
                 GUI.matrix = UiScale.Matrix(_rect.x, _rect.y, _scale);
-                GUI.Box(_rect, GUIContent.none, _box);
+                GUI.Box(_rect, GUIContent.none, _box); PanelBorder.Draw(_rect);
 
                 float cy = _rect.y + Pad;
                 // title bar (whole row is the drag handle)
@@ -222,6 +227,25 @@ namespace TbhDpsMeter
                 _fontSmDownRect = new Rect(fx, cy, 18, lh); GUI.Button(_fontSmDownRect, "−", _btn); fx += 20;
                 GUI.Label(new Rect(fx, cy + 1, 20, lh), $"<size=10><color=#eaf3ee>{Plugin.FontSizeSmall.Value}</color></size>", _dim); fx += 20;
                 _fontSmUpRect = new Rect(fx, cy, 18, lh); GUI.Button(_fontSmUpRect, "+", _btn);
+                cy += lh;
+
+                // border row: on/off toggle + color swatches (clicking a swatch also turns the border on)
+                bool bOn = false; try { bOn = Plugin.BorderOn.Value; } catch { }
+                float bw = 64f;
+                _borderRect = new Rect(ix, cy, bw, lh);
+                GUI.Button(_borderRect, $"{Loc.G("border")} <color={(bOn ? "#7fffa0" : "#ff8a8a")}>{(bOn ? Loc.G("snd_on") : Loc.G("snd_off"))}</color>", _btn);
+                _swatchRects.Clear();
+                float sw = Mathf.Min(lh - 2f, (iw - bw - 8f) / PanelBorder.Palette.Length - 4f), sx = ix + bw + 8f;
+                string curCol = "white"; try { curCol = Plugin.BorderColor.Value; } catch { }
+                for (int i = 0; i < PanelBorder.Palette.Length; i++)
+                {
+                    var pp = PanelBorder.Palette[i];
+                    var r = new Rect(sx + i * (sw + 4f), cy + (lh - sw) * 0.5f, sw, sw);
+                    _swatchRects.Add(r);
+                    bool sel = bOn && pp.Id == curCol;
+                    if (sel) DrawRect(r.x - 2, r.y - 2, r.width + 4, r.height + 4, new Color(1f, 1f, 1f, 0.85f));
+                    DrawRect(r.x, r.y, r.width, r.height, pp.C);
+                }
                 cy += lh;
 
                 // hover tooltip: panel name + hotkey, centered under the hovered icon

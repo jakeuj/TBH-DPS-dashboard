@@ -14,7 +14,7 @@ namespace TbhDpsMeter
     {
         public const string Guid = "tbh.dpsmeter";
         public const string Name = "TBH DPS Meter";
-        public const string Version = "0.9.0";
+        public const string Version = "0.9.1";
 
         public static DpsTracker Tracker;
         public static DamageTakenTracker TakenTracker;
@@ -33,6 +33,8 @@ namespace TbhDpsMeter
         public static ConfigEntry<int> FontSizeSmall;   // secondary/detail text (dim hints, axis labels, buttons)
         public static ConfigEntry<float> UIScale;
         public static ConfigEntry<bool> HideOnGameMenu;
+        public static ConfigEntry<bool> BorderOn;        // panel border, toggled from the F1 control center
+        public static ConfigEntry<string> BorderColor;   // palette id, see PanelBorder.Palette
         public static ConfigEntry<float> WindowSeconds;
         public static ConfigEntry<bool> DebugDamage;
         public static ConfigEntry<bool> AutoCheckUpdate;
@@ -125,6 +127,8 @@ namespace TbhDpsMeter
             FontSizeSmall = Config.Bind("UI", "FontSizeSmall", 13, "Secondary/detail font size: dim hints, chart axis labels, buttons. Adjust live from the F1 control center.");
             UIScale = Config.Bind("UI", "UIScale", 1.0f, "Global overlay scale (0.6–1.5). Panels auto-shrink further if they'd exceed the screen. Adjust live with Ctrl+PageUp/PageDown or the F1 control center's −/+ control.");
             HideOnGameMenu = Config.Bind("UI", "HideOnGameMenu", true, "Hide all overlays while a game menu (TAB) is open. Toggle live from the F1 control center.");
+            BorderOn = Config.Bind("UI", "PanelBorder", false, "Draw a border around every overlay panel. Toggle live from the F1 control center.");
+            BorderColor = Config.Bind("UI", "PanelBorderColor", "white", "Border color: white, gold, green, cyan, blue, magenta or red. Pick live from the F1 control center.");
             WindowSeconds = Config.Bind("Meter", "LiveWindowSeconds", 5f, "Sliding window length for the live DPS number.");
             _toggleKeyName = Config.Bind("General", "ToggleKey", "F9", "Key to show/hide the DPS overlay (UnityEngine.KeyCode name).");
             DebugDamage = Config.Bind("Debug", "LogDamageSamples", false, "Log the first damage hits to verify the hook is correct.");
